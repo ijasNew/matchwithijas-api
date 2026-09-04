@@ -1,0 +1,108 @@
+
+// delte after checking db
+function get_profile(): never
+{
+    $user = current_user(true);
+
+    $userId = (int)$user['id'];
+
+    $pdo = db();
+
+    /*
+     |--------------------------------------------------------------------------
+     | USERS
+     |--------------------------------------------------------------------------
+     */
+
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM users
+         WHERE id = ?
+         LIMIT 1'
+    );
+
+    $stmt->execute([$userId]);
+
+    $userData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | PROFILES
+     |--------------------------------------------------------------------------
+     */
+
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM profiles
+         WHERE user_id = ?
+         LIMIT 1'
+    );
+
+    $stmt->execute([$userId]);
+
+    $profileData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | PROFILE PREFERENCES
+     |--------------------------------------------------------------------------
+     */
+
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM profile_preferences
+         WHERE user_id = ?
+         LIMIT 1'
+    );
+
+    $stmt->execute([$userId]);
+
+    $profilePreferences =
+        $stmt->fetch(PDO::FETCH_ASSOC);
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | PREFERENCE VALUES
+     |--------------------------------------------------------------------------
+     */
+
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM preference_values
+         WHERE user_id = ?
+         ORDER BY id ASC'
+    );
+
+    $stmt->execute([$userId]);
+
+    $preferenceValues =
+        $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | RESPONSE
+     |--------------------------------------------------------------------------
+     */
+
+    success_response(
+        'Profile data fetched successfully.',
+        [
+            'users' =>
+                $userData ?: [],
+
+            'profiles' =>
+                $profileData ?: [],
+
+            'profile_preferences' =>
+                $profilePreferences ?: [],
+
+            'preference_values' =>
+                $preferenceValues
+        ]
+    );
+}
+// delte after checking db
