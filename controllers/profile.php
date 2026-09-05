@@ -1351,6 +1351,43 @@ function save_preferences(): never
             $userId
         ]);
 
+            /*
+                    |--------------------------------------------------------------------------
+                | Multiple parent preferences → child preference not applicable
+                |--------------------------------------------------------------------------
+                */
+
+                // Muslim: multiple sects
+                if (
+                    ($data['religion'] ?? '') === 'Muslim' &&
+                    isset($data['preferredSects']) &&
+                    is_array($data['preferredSects']) &&
+                    count($data['preferredSects']) > 1
+                ) {
+                    $data['preferredSunniGroups'] = [];
+                    $data['preferredSalafiGroups'] = [];
+                }
+
+                // Hindu: multiple castes
+                if (
+                    ($data['religion'] ?? '') === 'Hindu' &&
+                    isset($data['preferredCastes']) &&
+                    is_array($data['preferredCastes']) &&
+                    count($data['preferredCastes']) > 1
+                ) {
+                    $data['preferredSubCastes'] = [];
+                }
+
+                // Christian: multiple denominations
+                if (
+                    ($data['religion'] ?? '') === 'Christian' &&
+                    isset($data['preferredSects']) &&
+                    is_array($data['preferredSects']) &&
+                    count($data['preferredSects']) > 1
+                ) {
+                    $data['preferredSubCastes'] = [];
+                }
+
         $preferenceGroups = [
 
             'marital_status' =>
