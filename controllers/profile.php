@@ -97,6 +97,33 @@ const CHRISTIAN_DENOMINATION_OPTIONS = [
     'Catholic', 'Orthodox', 'Protestant', 'Pentecostal', 'Other'
 ];
 
+/*
+ * Preference-only options.
+ * These are intentionally separate from actual profile options so that
+ * profile "Other" remains a real profile value, while preference "Any"
+ * acts only as a wildcard preference.
+ */
+const PREFERRED_MUSLIM_SECT_OPTIONS = [
+    'Sunni', 'Salafi', 'Jamat Islami', 'Hanafi', 'Shafi', 'Any'
+];
+
+const PREFERRED_SUNNI_GROUP_OPTIONS = [
+    'AP-Sunni', 'EK-Sunni', 'Sunni', 'Any'
+];
+
+const PREFERRED_SALAFI_GROUP_OPTIONS = [
+    'KNM (Mainstream)', 'KNM Markazu Dawa', 'Wisdom',
+    'Salafi Independent', 'Other Salafi / Mujahid', 'Any'
+];
+
+const PREFERRED_HINDU_CASTE_OPTIONS = [
+    'Thiyya / Ezhava', 'Namboothiri', 'Nair', 'Viswakarma', 'SC', 'ST', 'Any'
+];
+
+const PREFERRED_CHRISTIAN_DENOMINATION_OPTIONS = [
+    'Catholic', 'Orthodox', 'Protestant', 'Pentecostal', 'Any'
+];
+
 const CHRISTIAN_SUB_GROUP_OPTIONS_BY_DENOMINATION = [
     'Catholic' => [
         'Syro-Malabar Catholic', 'Latin Catholic', 'Syro-Malankara Catholic'
@@ -1208,20 +1235,79 @@ function save_preferences(): never
         if (!empty($data['preferredSects'])) {
             // Covers Muslim sects and, per the frontend's reuse of this field,
             // Christian denominations too.
-            $validSects = array_merge(MUSLIM_SECT_OPTIONS, CHRISTIAN_DENOMINATION_OPTIONS);
+            $validSects = array_merge(
+                PREFERRED_MUSLIM_SECT_OPTIONS,
+                PREFERRED_CHRISTIAN_DENOMINATION_OPTIONS
+            );
             validate_choice_array($data['preferredSects'], $validSects, 'preferred sect');
+
+            if (
+                in_array('Any', $data['preferredSects'], true) &&
+                count($data['preferredSects']) > 1
+            ) {
+                error_response(
+                    '"Any" cannot be combined with other preferred sect/denomination values.',
+                    [],
+                    422
+                );
+            }
         }
 
         if (!empty($data['preferredSunniGroups'])) {
-            validate_choice_array($data['preferredSunniGroups'], SUNNI_GROUP_OPTIONS, 'preferred Sunni group');
+            validate_choice_array(
+                $data['preferredSunniGroups'],
+                PREFERRED_SUNNI_GROUP_OPTIONS,
+                'preferred Sunni group'
+            );
+
+            if (
+                in_array('Any', $data['preferredSunniGroups'], true) &&
+                count($data['preferredSunniGroups']) > 1
+            ) {
+                error_response(
+                    '"Any" cannot be combined with other preferred Sunni groups.',
+                    [],
+                    422
+                );
+            }
         }
 
         if (!empty($data['preferredSalafiGroups'])) {
-            validate_choice_array($data['preferredSalafiGroups'], SALAFI_GROUP_OPTIONS, 'preferred Salafi group');
+            validate_choice_array(
+                $data['preferredSalafiGroups'],
+                PREFERRED_SALAFI_GROUP_OPTIONS,
+                'preferred Salafi group'
+            );
+
+            if (
+                in_array('Any', $data['preferredSalafiGroups'], true) &&
+                count($data['preferredSalafiGroups']) > 1
+            ) {
+                error_response(
+                    '"Any" cannot be combined with other preferred Salafi groups.',
+                    [],
+                    422
+                );
+            }
         }
 
         if (!empty($data['preferredCastes'])) {
-            validate_choice_array($data['preferredCastes'], HINDU_CASTE_OPTIONS, 'preferred caste');
+            validate_choice_array(
+                $data['preferredCastes'],
+                PREFERRED_HINDU_CASTE_OPTIONS,
+                'preferred caste'
+            );
+
+            if (
+                in_array('Any', $data['preferredCastes'], true) &&
+                count($data['preferredCastes']) > 1
+            ) {
+                error_response(
+                    '"Any" cannot be combined with other preferred caste values.',
+                    [],
+                    422
+                );
+            }
         }
 
         if (!empty($data['preferredSubCastes'])) {
@@ -1229,10 +1315,22 @@ function save_preferences(): never
             // (see build ProfileFor logic on the frontend), so validate
             // against the union of both.
             $allSubCastes = array_merge(
+                ['Any'],
                 ...array_values(HINDU_SUB_CASTE_OPTIONS_BY_CASTE),
                 ...array_values(CHRISTIAN_SUB_GROUP_OPTIONS_BY_DENOMINATION)
             );
             validate_choice_array($data['preferredSubCastes'], $allSubCastes, 'preferred sub-caste');
+
+            if (
+                in_array('Any', $data['preferredSubCastes'], true) &&
+                count($data['preferredSubCastes']) > 1
+            ) {
+                error_response(
+                    '"Any" cannot be combined with other preferred sub-caste/sub-denomination values.',
+                    [],
+                    422
+                );
+            }
         }
 
         if (!empty($data['preferredEducation'])) {
@@ -1255,7 +1353,16 @@ function save_preferences(): never
             error_response('Please select at least one preferred location.', [], 422);
         }
 
-        validate_choice_array($data['preferredLocations'], DISTRICT_OPTIONS, 'preferred location');
+        $preferredLocationOptions = array_merge(
+            ['All Kerala'],
+            DISTRICT_OPTIONS
+        );
+
+        validate_choice_array(
+            $data['preferredLocations'],
+            $preferredLocationOptions,
+            'preferred location'
+        );
 
 
         /*
@@ -1357,33 +1464,42 @@ function save_preferences(): never
                 |--------------------------------------------------------------------------
                 */
 
-                // Muslim: multiple sects
+                // Muslim: multiple sects OR Any parent -> child preference is not applicable.
                 if (
                     ($data['religion'] ?? '') === 'Muslim' &&
                     isset($data['preferredSects']) &&
                     is_array($data['preferredSects']) &&
-                    count($data['preferredSects']) > 1
+                    (
+                        count($data['preferredSects']) > 1 ||
+                        in_array('Any', $data['preferredSects'], true)
+                    )
                 ) {
                     $data['preferredSunniGroups'] = [];
                     $data['preferredSalafiGroups'] = [];
                 }
 
-                // Hindu: multiple castes
+                // Hindu: multiple castes OR Any parent -> child preference is not applicable.
                 if (
                     ($data['religion'] ?? '') === 'Hindu' &&
                     isset($data['preferredCastes']) &&
                     is_array($data['preferredCastes']) &&
-                    count($data['preferredCastes']) > 1
+                    (
+                        count($data['preferredCastes']) > 1 ||
+                        in_array('Any', $data['preferredCastes'], true)
+                    )
                 ) {
                     $data['preferredSubCastes'] = [];
                 }
 
-                // Christian: multiple denominations
+                // Christian: multiple denominations OR Any parent -> child preference is not applicable.
                 if (
                     ($data['religion'] ?? '') === 'Christian' &&
                     isset($data['preferredSects']) &&
                     is_array($data['preferredSects']) &&
-                    count($data['preferredSects']) > 1
+                    (
+                        count($data['preferredSects']) > 1 ||
+                        in_array('Any', $data['preferredSects'], true)
+                    )
                 ) {
                     $data['preferredSubCastes'] = [];
                 }

@@ -414,6 +414,13 @@ function get_matching_profiles(): never
 
     if (count($preferredLocations) > 0) {
 
+    // "All Kerala" means every Kerala district is accepted.
+    if (in_array('all kerala', $preferredLocations, true)) {
+
+        // No district filter required.
+
+    } else {
+
         $placeholders = [];
 
         foreach (
@@ -437,7 +444,7 @@ function get_matching_profiles(): never
             )
         ';
     }
-
+}
 
     /*
     |--------------------------------------------------------------------------

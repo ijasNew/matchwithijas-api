@@ -72,7 +72,201 @@ function format_interest_row(
         'createdAt' => (string) $row['created_at']
     ];
 }
+function is_profile_complete_for_interest(
+    PDO $pdo,
+    int $userId
+): bool {
 
+    // ---------------------------------------------------------
+    // USER / PROFILE DATA
+    // ---------------------------------------------------------
+    $stmt = $pdo->prepare(
+        'SELECT
+            p.*,
+            u.phone AS account_phone
+         FROM profiles p
+         INNER JOIN users u ON u.id = p.user_id
+         WHERE p.user_id = ?
+         LIMIT 1'
+    );
+
+    $stmt->execute([$userId]);
+
+    $profile =
+        $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    if (!$profile) {
+        return false;
+    }
+
+
+    // ---------------------------------------------------------
+    // PREFERENCE VALUES
+    // ---------------------------------------------------------
+    $stmt = $pdo->prepare(
+        'SELECT preference_type, value
+         FROM preference_values
+         WHERE user_id = ?'
+    );
+
+    $stmt->execute([$userId]);
+
+    $preferenceRows =
+        $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $preferences = [];
+
+    foreach ($preferenceRows as $row) {
+
+        $type =
+            trim((string)($row['preference_type'] ?? ''));
+
+        $value =
+            trim((string)($row['value'] ?? ''));
+
+        if ($type === '' || $value === '') {
+            continue;
+        }
+
+        $preferences[$type][] = $value;
+    }
+
+
+    // ---------------------------------------------------------
+    // ACTIVE PHOTOS
+    // ---------------------------------------------------------
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM profile_photos
+         WHERE user_id = ?
+         AND status = "active"'
+    );
+
+    $stmt->execute([$userId]);
+
+    $photoCount =
+        (int)$stmt->fetchColumn();
+
+
+    // ---------------------------------------------------------
+    // REQUIRED 8
+    // ---------------------------------------------------------
+
+    // 1. Physical Status
+    $physicalStatusCompleted =
+        trim(
+            (string)($profile['physical_status'] ?? '')
+        ) !== '';
+
+
+    // 2. Work Location
+    $workLocationType =
+        trim(
+            (string)($profile['work_location_type'] ?? '')
+        );
+
+    $workState =
+        trim(
+            (string)($profile['work_state'] ?? '')
+        );
+
+    $workDistrict =
+        trim(
+            (string)($profile['work_district'] ?? '')
+        );
+
+    $workCountry =
+        trim(
+            (string)($profile['work_country'] ?? '')
+        );
+
+    $workCity =
+        trim(
+            (string)($profile['work_city'] ?? '')
+        );
+
+    $workLocationCompleted = false;
+
+    if (
+        in_array(
+            $workLocationType,
+            [
+                'india_same_state',
+                'india_other_state'
+            ],
+            true
+        )
+        && $workState !== ''
+        && $workDistrict !== ''
+    ) {
+
+        $workLocationCompleted = true;
+
+    } elseif (
+        $workLocationType === 'outside_india'
+        && $workCountry !== ''
+        && $workCity !== ''
+    ) {
+
+        $workLocationCompleted = true;
+    }
+
+
+    // 3. Preferred Family Status
+    $preferredFamilyStatusCompleted =
+        count(
+            $preferences['family_status'] ?? []
+        ) > 0;
+
+
+    // 4. Preferred Physical Status
+    $preferredPhysicalStatusCompleted =
+        count(
+            $preferences['physical_status'] ?? []
+        ) > 0;
+
+
+    // 5. Preferred Location Radius
+    $preferredLocationRadiusCompleted =
+        count(
+            $preferences['location_radius'] ?? []
+        ) > 0;
+
+
+    // 6. Family Background
+    $familyBackgroundCompleted =
+        trim(
+            (string)($profile['family_status'] ?? '')
+        ) !== '';
+
+
+    // 7. WhatsApp Number
+    $whatsappCompleted =
+        trim(
+            (string)($profile['whatsapp_number'] ?? '')
+        ) !== '';
+
+
+    // 8. Profile Photo
+    $photoCompleted =
+        $photoCount > 0;
+
+
+    // ---------------------------------------------------------
+    // FINAL PROFILE COMPLETION GATE
+    // ---------------------------------------------------------
+
+    return (
+        $physicalStatusCompleted
+        && $workLocationCompleted
+        && $preferredFamilyStatusCompleted
+        && $preferredPhysicalStatusCompleted
+        && $preferredLocationRadiusCompleted
+        && $familyBackgroundCompleted
+        && $whatsappCompleted
+        && $photoCompleted
+    );
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -90,6 +284,54 @@ function send_interest(): never
     $senderId = (int) $user['id'];
 
     $pdo = db();
+   
+    
+    // =========================================================
+    // PROFILE COMPLETION CHECK
+    // =========================================================
+    if (
+        !is_profile_complete_for_interest(
+            $pdo,
+            $senderId
+        )
+    ) {
+
+        error_response(
+            'Please complete your profile before sending interest.',
+            [
+                'code' => 'PROFILE_INCOMPLETE'
+            ],
+            422
+        );
+    }
+
+    // =========================================================
+// HOME VERIFICATION CHECK
+// =========================================================
+
+$stmt = $pdo->prepare(
+    'SELECT home_verified
+     FROM profiles
+     WHERE user_id = ?
+     LIMIT 1'
+);
+
+$stmt->execute([$senderId]);
+
+$homeVerified =
+    ((int) ($stmt->fetchColumn() ?: 0)) === 1;
+
+if (!$homeVerified) {
+
+    error_response(
+        'Please complete your home verification before sending interest.',
+        [
+            'code' => 'HOME_VERIFICATION_REQUIRED'
+        ],
+        403
+    );
+}
+
     $data = request_json();
 
     $receiverMemberId = trim((string) ($data['member_id'] ?? ''));
