@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/photo-security.php';
 
 
 /*
@@ -39,14 +40,18 @@ function resolve_user_id_by_member_id(PDO $pdo, string $memberId): ?int
 |--------------------------------------------------------------------------
 */
 
-function format_interest_row(array $row): array
+function format_interest_row(
+    array $row,
+    bool $viewerHomeVerified = false,
+    ?DateTimeInterface $today = null
+): array
 {
     $age = null;
 
     if (!empty($row['date_of_birth'])) {
 
-        $birthDate = new DateTime($row['date_of_birth']);
-        $today = new DateTime();
+        $birthDate = new DateTimeImmutable($row['date_of_birth']);
+        $today = $today ?? new DateTimeImmutable('today');
         $age = $birthDate->diff($today)->y;
     }
 
@@ -59,29 +64,14 @@ function format_interest_row(array $row): array
         'district' => (string) ($row['district'] ?? ''),
         'religion' => (string) ($row['religion'] ?? ''),
         'education' => (string) ($row['highest_education'] ?? ''),
-        'photoUrl' => $row['photo_path'] ?? null,
+        'photoUrl' => !empty($row['photo_path'])
+            ? photo_url_for_viewer((string)$row['photo_path'], $viewerHomeVerified)
+            : null,
         'verified' => ((int) ($row['home_verified'] ?? 0)) === 1,
         'status' => (string) $row['status'],
         'createdAt' => (string) $row['created_at']
     ];
 }
-
-
-/*
-|--------------------------------------------------------------------------
-| PROFILE JOIN FRAGMENT (reused by received / sent queries)
-|--------------------------------------------------------------------------
-*/
-
-const INTEREST_PROFILE_JOIN_SQL = '
-    INNER JOIN users u ON u.id = %s
-    LEFT JOIN profiles p ON p.user_id = %s
-    LEFT JOIN (
-        SELECT pp.user_id, pp.file_path
-        FROM profile_photos pp
-        WHERE pp.status = "active" AND pp.is_primary = 1
-    ) photo ON photo.user_id = %s
-';
 
 
 /*
@@ -314,6 +304,11 @@ function get_received_interests(): never
 
     $pdo = db();
 
+    $viewerHomeVerified = false;
+    $verificationStmt = $pdo->prepare('SELECT home_verified FROM profiles WHERE user_id = ? LIMIT 1');
+    $verificationStmt->execute([$userId]);
+    $viewerHomeVerified = ((int)($verificationStmt->fetchColumn() ?: 0)) === 1;
+
     $sql = '
         SELECT
             i.id,
@@ -338,6 +333,8 @@ function get_received_interests(): never
         ) photo ON photo.user_id = i.sender_user_id
         WHERE i.receiver_user_id = ?
           AND i.status <> "cancelled"
+          AND u.account_status = "active"
+          AND p.registration_completed = 1
         ORDER BY i.created_at DESC
     ';
 
@@ -346,7 +343,16 @@ function get_received_interests(): never
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $interests = array_map('format_interest_row', $rows);
+    $today = new DateTimeImmutable('today');
+
+    $interests = array_map(
+        static fn(array $row): array => format_interest_row(
+            $row,
+            $viewerHomeVerified,
+            $today
+        ),
+        $rows
+    );
 
     success_response(
         'Received interests fetched successfully.',
@@ -374,6 +380,11 @@ function get_sent_interests(): never
 
     $pdo = db();
 
+    $viewerHomeVerified = false;
+    $verificationStmt = $pdo->prepare('SELECT home_verified FROM profiles WHERE user_id = ? LIMIT 1');
+    $verificationStmt->execute([$userId]);
+    $viewerHomeVerified = ((int)($verificationStmt->fetchColumn() ?: 0)) === 1;
+
     $sql = '
         SELECT
             i.id,
@@ -398,6 +409,8 @@ function get_sent_interests(): never
         ) photo ON photo.user_id = i.receiver_user_id
         WHERE i.sender_user_id = ?
           AND i.status <> "cancelled"
+          AND u.account_status = "active"
+          AND p.registration_completed = 1
         ORDER BY i.created_at DESC
     ';
 
@@ -406,7 +419,16 @@ function get_sent_interests(): never
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $interests = array_map('format_interest_row', $rows);
+    $today = new DateTimeImmutable('today');
+
+    $interests = array_map(
+        static fn(array $row): array => format_interest_row(
+            $row,
+            $viewerHomeVerified,
+            $today
+        ),
+        $rows
+    );
 
     success_response(
         'Sent interests fetched successfully.',

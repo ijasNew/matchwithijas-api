@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/photo-security.php';
 
 
 /*
@@ -57,7 +58,8 @@ function get_matching_profiles(): never
             id,
             user_id,
             gender,
-            date_of_birth
+            date_of_birth,
+            home_verified
          FROM profiles
          WHERE user_id = ?
          LIMIT 1'
@@ -76,6 +78,8 @@ function get_matching_profiles(): never
             404
         );
     }
+
+    $viewerHomeVerified = ((int)($currentProfile['home_verified'] ?? 0)) === 1;
 
 
     /*
@@ -107,7 +111,9 @@ function get_matching_profiles(): never
     */
 
     $currentGender =
-        trim((string) ($currentProfile['gender'] ?? ''));
+        strtolower(
+            trim((string) ($currentProfile['gender'] ?? ''))
+        );
 
 
     /*
@@ -141,10 +147,12 @@ function get_matching_profiles(): never
     */
 
     $preferredReligion =
-        trim(
-            (string) (
-                $preferences['preferred_religion']
-                ?? ''
+        strtolower(
+            trim(
+                (string) (
+                    $preferences['preferred_religion']
+                    ?? ''
+                )
             )
         );
 
@@ -178,8 +186,10 @@ function get_matching_profiles(): never
             array_filter(
                 array_map(
                     static function ($row) {
-                        return trim(
-                            (string) ($row['value'] ?? '')
+                        return strtolower(
+                            trim(
+                                (string) ($row['value'] ?? '')
+                            )
                         );
                     },
                     $stmt->fetchAll(PDO::FETCH_ASSOC)
@@ -234,6 +244,7 @@ function get_matching_profiles(): never
             p.religion,
             p.highest_education,
             p.home_verified,
+            p.created_at,
 
             (
                 SELECT pp.file_path
@@ -287,16 +298,28 @@ function get_matching_profiles(): never
         $ageMax > 0
     ) {
 
+        // Convert the age range into a DOB range so MySQL can use
+        // an index on p.date_of_birth instead of applying a function
+        // to every candidate row.
+        $today = new DateTimeImmutable('today');
+
+        $maxBirthDateExclusive = $today
+            ->modify('-' . ($ageMax + 1) . ' years')
+            ->format('Y-m-d');
+
+        $minBirthDateInclusive = $today
+            ->modify('-' . $ageMin . ' years')
+            ->format('Y-m-d');
+
         $sql .= '
-            AND TIMESTAMPDIFF(
-                YEAR,
-                p.date_of_birth,
-                CURDATE()
-            ) BETWEEN :age_min AND :age_max
+            AND p.date_of_birth > :max_birth_date_exclusive
+            AND p.date_of_birth <= :min_birth_date_inclusive
         ';
 
-        $params[':age_min'] = $ageMin;
-        $params[':age_max'] = $ageMax;
+        $params[':max_birth_date_exclusive'] =
+            $maxBirthDateExclusive;
+        $params[':min_birth_date_inclusive'] =
+            $minBirthDateInclusive;
     }
 
 
@@ -309,8 +332,7 @@ function get_matching_profiles(): never
     if ($preferredReligion !== '') {
 
         $sql .= '
-            AND LOWER(TRIM(p.religion))
-                = LOWER(TRIM(:preferred_religion))
+            AND p.religion = :preferred_religion
         ';
 
         $params[':preferred_religion'] =
@@ -344,22 +366,9 @@ function get_matching_profiles(): never
         }
 
         $sql .= '
-            AND LOWER(TRIM(p.marital_status))
-                IN (
-                    ' .
-                    implode(
-                        ', ',
-                        array_map(
-                            static function ($placeholder) {
-                                return 'LOWER(TRIM(' .
-                                    $placeholder .
-                                    '))';
-                            },
-                            $placeholders
-                        )
-                    )
-                . '
-                )
+            AND p.marital_status IN (
+                ' . implode(', ', $placeholders) . '
+            )
         ';
     }
 
@@ -390,22 +399,9 @@ function get_matching_profiles(): never
         }
 
         $sql .= '
-            AND LOWER(TRIM(p.highest_education))
-                IN (
-                    ' .
-                    implode(
-                        ', ',
-                        array_map(
-                            static function ($placeholder) {
-                                return 'LOWER(TRIM(' .
-                                    $placeholder .
-                                    '))';
-                            },
-                            $placeholders
-                        )
-                    )
-                . '
-                )
+            AND p.highest_education IN (
+                ' . implode(', ', $placeholders) . '
+            )
         ';
     }
 
@@ -436,45 +432,11 @@ function get_matching_profiles(): never
         }
 
         $sql .= '
-            AND LOWER(TRIM(p.district))
-                IN (
-                    ' .
-                    implode(
-                        ', ',
-                        array_map(
-                            static function ($placeholder) {
-                                return 'LOWER(TRIM(' .
-                                    $placeholder .
-                                    '))';
-                            },
-                            $placeholders
-                        )
-                    )
-                . '
-                )
+            AND p.district IN (
+                ' . implode(', ', $placeholders) . '
+            )
         ';
     }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | REMOVE DUPLICATES
-    |--------------------------------------------------------------------------
-    */
-
-    $sql .= '
-        GROUP BY
-            p.user_id,
-            u.member_id,
-            p.full_name,
-            p.gender,
-            p.marital_status,
-            p.date_of_birth,
-            p.district,
-            p.religion,
-            p.highest_education,
-            p.home_verified
-    ';
 
 
     /*
@@ -512,6 +474,8 @@ function get_matching_profiles(): never
 
     $profiles = [];
 
+    $today = new DateTimeImmutable('today');
+
 
     foreach ($rows as $row) {
 
@@ -529,9 +493,6 @@ function get_matching_profiles(): never
                 new DateTime(
                     $row['date_of_birth']
                 );
-
-            $today =
-                new DateTime();
 
             $age =
                 $birthDate->diff($today)->y;
@@ -552,13 +513,11 @@ function get_matching_profiles(): never
 
         $photoUrl = null;
 
-
-        if (
-            !empty($row['photo_path'])
-        ) {
-
-            $photoUrl =
-                $row['photo_path'];
+        if (!empty($row['photo_path'])) {
+            $photoUrl = photo_url_for_viewer(
+                (string)$row['photo_path'],
+                $viewerHomeVerified
+            );
         }
 
 

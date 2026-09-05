@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/photo-security.php';
 
 function photo_user(): array
 {
@@ -199,6 +200,17 @@ function save_profile_photos(): never
             }
 
             $createdPaths[] = $absolutePath;
+
+            // Generate the privacy preview immediately after storing the original.
+            // If this fails, do not expose the original as a substitute later.
+            $blurredRelativePath = ensure_blurred_photo($relativePath);
+            if ($blurredRelativePath === null) {
+                throw new RuntimeException('Unable to create blurred photo preview.');
+            }
+
+            $blurredAbsolutePath = dirname(__DIR__) . '/' . $blurredRelativePath;
+            $createdPaths[] = $blurredAbsolutePath;
+
             $isPrimary = $order === 0 ? 1 : 0;
 
             $stmt = $pdo->prepare(
@@ -225,6 +237,14 @@ function save_profile_photos(): never
         $absolutePath = dirname(__DIR__) . '/' . ltrim(str_replace('\\', '/', $relativePath), '/');
         if (is_file($absolutePath)) {
             @unlink($absolutePath);
+        }
+
+        $blurredRelativePath = photo_blurred_relative_path($relativePath);
+        if ($blurredRelativePath !== '') {
+            $blurredAbsolutePath = dirname(__DIR__) . '/' . $blurredRelativePath;
+            if (is_file($blurredAbsolutePath)) {
+                @unlink($blurredAbsolutePath);
+            }
         }
     }
 
