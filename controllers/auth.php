@@ -285,6 +285,17 @@ function change_password(): never
         $user['id']
     ]);
 
+        // Revoke all existing sessions after password change
+        $pdo = db();
+
+        $pdo->prepare(
+            'UPDATE auth_sessions
+            SET revoked_at = NOW()
+            WHERE user_id = ?
+            AND revoked_at IS NULL'
+        )->execute([
+            $user['id']
+        ]);
     success_response(
         'Password changed successfully.'
     );

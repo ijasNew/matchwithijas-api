@@ -48,7 +48,8 @@ function get_verification_status(): never
             state,
             registration_completed,
             profile_status,
-            home_verified
+            home_verified,
+            created_at
          FROM profiles
          WHERE user_id = ?
          LIMIT 1'
@@ -73,67 +74,57 @@ function get_verification_status(): never
 
     /*
      * ---------------------------------------------------------------
-     * GET LATEST PAYMENT CONNECTED TO A VERIFICATION REQUEST
+     * GET CURRENT BASIC / HOME VERIFICATION PAYMENT
      * ---------------------------------------------------------------
      *
-     * verification_requests.payment_id points to payments.id.
+     * Basic plan is the Home Verification payment.
      *
-     * We use the latest verification request for this user.
+     * We find the latest Basic payment and then
+     * its linked verification request.
      */
-    /*
- * ---------------------------------------------------------------
- * GET CURRENT BASIC / HOME VERIFICATION PAYMENT
- * ---------------------------------------------------------------
- *
- * Basic plan is the Home Verification payment.
- *
- * We find the latest successful Basic payment and then
- * its linked verification request.
- */
 
-$stmt = $pdo->prepare(
-    'SELECT
-        p.id AS payment_id,
-        p.amount,
-        p.payment_status,
-        p.payment_method,
-        p.transaction_id,
-        p.paid_at,
-        p.created_at AS payment_created_at,
+    $stmt = $pdo->prepare(
+        'SELECT
+            p.id AS payment_id,
+            p.amount,
+            p.payment_status,
+            p.payment_method,
+            p.transaction_id,
+            p.paid_at,
+            p.created_at AS payment_created_at,
 
-        pl.name AS plan_name,
+            pl.name AS plan_name,
 
-        vr.id AS verification_id,
-        vr.status AS verification_status,
-        vr.requested_at,
-        vr.started_at,
-        vr.completed_at
+            vr.id AS verification_id,
+            vr.status AS verification_status,
+            vr.requested_at,
+            vr.started_at,
+            vr.completed_at
 
-     FROM payments p
+         FROM payments p
 
-     INNER JOIN plans pl
-        ON pl.id = p.plan_id
+         INNER JOIN plans pl
+            ON pl.id = p.plan_id
 
-     LEFT JOIN verification_requests vr
-        ON vr.payment_id = p.id
-        AND vr.user_id = p.user_id
+         LEFT JOIN verification_requests vr
+            ON vr.payment_id = p.id
+            AND vr.user_id = p.user_id
 
-     WHERE
-        p.user_id = ?
-        AND pl.name = "Basic"
+         WHERE
+            p.user_id = ?
+            AND pl.name = "Basic"
 
-     ORDER BY
-        p.id DESC
+         ORDER BY
+            p.id DESC
 
-     LIMIT 1'
-);
+         LIMIT 1'
+    );
 
-$stmt->execute([
-    $userId
-]);
+    $stmt->execute([
+        $userId
+    ]);
 
-$verification = $stmt->fetch(PDO::FETCH_ASSOC);
-     
+    $verification = $stmt->fetch(PDO::FETCH_ASSOC);
 
 
     /*
@@ -264,8 +255,6 @@ $verification = $stmt->fetch(PDO::FETCH_ASSOC);
      * IMPORTANT BUSINESS STATE
      * ---------------------------------------------------------------
      *
-     * This is the exact state requested by the frontend:
-     *
      * payment_status = paid
      * verification_status = pending
      *
@@ -281,7 +270,11 @@ $verification = $stmt->fetch(PDO::FETCH_ASSOC);
 
 
     /*
-     * If already verified, also do not show payment form.
+     * ---------------------------------------------------------------
+     * VERIFICATION COMPLETED
+     * ---------------------------------------------------------------
+     *
+     * If already verified, do not show payment form.
      */
 
     $verificationCompleted =
@@ -341,7 +334,15 @@ $verification = $stmt->fetch(PDO::FETCH_ASSOC);
                     $profile['profile_status'],
 
                 'home_verified' =>
-                    (int)$profile['home_verified']
+                    (int)$profile['home_verified'],
+
+                /*
+                 * Registration/profile creation time
+                 * Used by frontend for 3-day offer calculation.
+                 */
+
+                'registered_at' =>
+                    $profile['created_at']
             ]
         ]
     );

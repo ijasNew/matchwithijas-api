@@ -265,6 +265,8 @@ function get_matching_profiles(): never
 
           AND p.gender <> :current_gender
 
+          
+
           AND u.role = "user"
 
           AND u.account_status = "active"
@@ -276,12 +278,35 @@ function get_matching_profiles(): never
               "pending_verification",
               "verified"
           )
+
+
+
+
+          AND NOT EXISTS (
+            SELECT 1
+            FROM interests i
+            WHERE
+                (
+                   (
+                i.sender_user_id = :current_user_id_1
+                AND i.receiver_user_id = p.user_id
+            )
+            OR
+            (
+                i.sender_user_id = p.user_id
+                AND i.receiver_user_id = :current_user_id_2
+            )
+                )
+                AND i.status =  \'declined\'
+)
     ';
 
 
     $params = [
         ':current_user_id' => $userId,
-        ':current_gender' => $currentGender
+    ':current_user_id_1' => $userId,
+    ':current_user_id_2' => $userId,
+    ':current_gender' => $currentGender
     ];
 
 
@@ -454,8 +479,9 @@ function get_matching_profiles(): never
 
     $sql .= '
         ORDER BY
-            p.home_verified DESC,
-            p.created_at DESC
+            photo_path IS NULL ASC,
+        p.home_verified DESC,
+        p.created_at DESC
     ';
 
 

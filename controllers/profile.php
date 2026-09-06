@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/photo-security.php';
 
  
 
@@ -164,8 +165,17 @@ const SPECIALIZATION_OPTIONS_BY_EDUCATION = [
         'MA', 'MSc', 'MCom', 'MBA', 'MCA', 'MSW', 'MEd', 'LLM', 'MTech', 'Other'
     ],
     'Professional Degree' => [
-        'MBBS', 'BDS', 'BAMS', 'BHMS', 'BUMS', 'BE / BTech',
-        'LLB', 'CA', 'CMA', 'CS', 'PharmD', 'Other Professional'
+       'MBBS',
+  'MD / MS / DNB',
+  'BDS / MDS',
+  'BAMS / BHMS / BUMS',
+  'BE / B.Tech',
+  'ME / M.Tech',
+  'B.Pharm / Pharm.D',
+  'BPT / MPT',
+  'CA / CMA / CS / ACCA',
+  'LLB / LLM',
+  'Other Professional'
     ],
     'General Degree (Bachelors)' => [
         'BA', 'BSc', 'BCom', 'BBA', 'BCA', 'BBM', 'BSW', 'Other Bachelor’s'
@@ -204,8 +214,17 @@ const PREFERRED_EDUCATION_OPTIONS = [
 ];
 
 const PREFERRED_EDUCATION_SPECIFIC_OPTIONS = [
-    'MBBS', 'BDS', 'BAMS', 'BHMS', 'BUMS', 'BE / BTech',
-    'LLB', 'CA', 'CMA', 'CS', 'PharmD', 'Other Professional'
+'MBBS',
+  'MD / MS / DNB',
+  'BDS / MDS',
+  'BAMS / BHMS / BUMS',
+  'BE / B.Tech',
+  'ME / M.Tech',
+  'B.Pharm / Pharm.D',
+  'BPT / MPT',
+  'CA / CMA / CS / ACCA',
+  'LLB / LLM',
+  'Other Professional'
 ];
 
 const PREFERRED_CAREER_SECTOR_OPTIONS = [
@@ -1847,36 +1866,57 @@ function get_profile_view(string $memberId): never
         $preferenceValues[$type][] = $valueRow['value'];
     }
 
-    $photoStmt = $pdo->prepare(
+        $photoStmt = $pdo->prepare(
         'SELECT file_path
-         FROM profile_photos
-         WHERE user_id = ?
-           AND status = "active"
-         ORDER BY is_primary DESC, display_order ASC, id ASC'
+        FROM profile_photos
+        WHERE user_id = ?
+        AND status = "active"
+        ORDER BY is_primary DESC, display_order ASC, id ASC'
     );
+
     $photoStmt->execute([$targetUserId]);
 
-    $photos = [];
-    $apiBasePath = rtrim(
-        str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')),
-        '/'
+    /*
+    * Photo privacy:
+    * Viewer Home Verified ആണെങ്കിൽ original photo.
+    * അല്ലെങ്കിൽ blurred photo മാത്രം.
+    */
+    $viewerProfileStmt = $pdo->prepare(
+        'SELECT home_verified
+        FROM profiles
+        WHERE user_id = ?
+        LIMIT 1'
     );
 
+    $viewerProfileStmt->execute([$viewerId]);
+
+    $viewerHomeVerified =
+        (int)$viewerProfileStmt->fetchColumn() === 1;
+
+    $photos = [];
+
     foreach ($photoStmt->fetchAll(PDO::FETCH_ASSOC) as $photoRow) {
-        $path = trim((string)$photoRow['file_path']);
 
-        if ($path === '') {
-            continue;
-        }
+    $path = trim((string)$photoRow['file_path']);
 
-        if (preg_match('/^https?:\\/\\//i', $path)) {
-            $photos[] = $path;
-        } else {
-            $photos[] = ($apiBasePath !== '' ? $apiBasePath : '')
-                . '/'
-                . ltrim($path, '/');
-        }
+    if ($path === '') {
+        continue;
     }
+
+    // Only internal stored photo paths are handled here.
+    if (preg_match('/^https?:\/\//i', $path)) {
+        continue;
+    }
+
+    $photoUrl = photo_url_for_viewer(
+        $path,
+        $viewerHomeVerified
+    );
+
+    if ($photoUrl !== null) {
+        $photos[] = $photoUrl;
+    }
+}
 
     $age = null;
     if (!empty($row['date_of_birth'])) {
