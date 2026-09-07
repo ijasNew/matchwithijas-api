@@ -150,37 +150,56 @@ function get_shortlist(): never
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$userId]);
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$viewerHomeVerified = false;
 
-    $profiles = [];
-    $memberIds = [];
+$verificationStmt = $pdo->prepare(
+    'SELECT home_verified FROM profiles WHERE user_id = ? LIMIT 1'
+);
 
-    foreach ($rows as $row) {
+$verificationStmt->execute([$userId]);
 
-        $age = null;
+$viewerHomeVerified = ((int) ($verificationStmt->fetchColumn() ?: 0)) === 1;
 
-        if (!empty($row['date_of_birth'])) {
-            $birthDate = new DateTime($row['date_of_birth']);
-            $today = new DateTime();
-            $age = $birthDate->diff($today)->y;
-        }
+$profiles = [];
+$memberIds = [];
 
-        $profiles[] = [
-            'memberId' => (string) $row['member_id'],
-            'name' => (string) ($row['full_name'] ?? ''),
-            'age' => $age,
-            'maritalStatus' => (string) ($row['marital_status'] ?? ''),
-            'district' => (string) ($row['district'] ?? ''),
-            'religion' => (string) ($row['religion'] ?? ''),
-            'education' => (string) ($row['highest_education'] ?? ''),
-            'photoUrl' => $row['photo_path'] ?? null,
-            'verified' => ((int) ($row['home_verified'] ?? 0)) === 1,
-            'shortlistedAt' => (string) $row['created_at']
-        ];
+foreach ($rows as $row) {
 
-        $memberIds[] = (string) $row['member_id'];
+    $age = null;
+
+    if (!empty($row['date_of_birth'])) {
+        $birthDate = new DateTime($row['date_of_birth']);
+        $today = new DateTime();
+        $age = $birthDate->diff($today)->y;
     }
+
+    $profiles[] = [
+        'memberId' => (string) $row['member_id'],
+        'name' => (string) ($row['full_name'] ?? ''),
+        'age' => $age,
+        'maritalStatus' => (string) ($row['marital_status'] ?? ''),
+        'district' => (string) ($row['district'] ?? ''),
+        'religion' => (string) ($row['religion'] ?? ''),
+        'education' => (string) ($row['highest_education'] ?? ''),
+
+        // ✅ SECURE PHOTO URL
+        'photoUrl' => !empty($row['photo_path'])
+            ? photo_url_for_viewer(
+                (string) $row['photo_path'],
+                $viewerHomeVerified
+              )
+            : null,
+
+        'verified' => ((int) ($row['home_verified'] ?? 0)) === 1,
+        'shortlistedAt' => (string) $row['created_at']
+    ];
+
+    $memberIds[] = (string) $row['member_id'];
+}
+
+    
 
     success_response(
         'Shortlisted profiles fetched successfully.',

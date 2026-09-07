@@ -34,6 +34,15 @@ function photo_public_url(string $relativePath): string
     return ltrim(str_replace('\\', '/', $relativePath), '/');
 }
 
+// Photos are now served through the authenticated gatekeeper
+// (serve-photo.php) instead of exposing the raw uploads/ path.
+// The gatekeeper decides original-vs-blurred per request based on
+// the caller's own auth token and home-verified status.
+function photo_serve_url(int $photoId): string
+{
+    return '/matchwithijas-api/serve-photo.php?id=' . $photoId;
+}
+
 function get_profile_photos(): never
 {
     $user = photo_user();
@@ -52,7 +61,7 @@ function get_profile_photos(): never
     $photos = array_map(static function (array $row): array {
         return [
             'id' => (int)$row['id'],
-            'url' => photo_public_url((string)$row['file_path']),
+            'url' => photo_serve_url((int)$row['id']),
             'is_primary' => (int)$row['is_primary'],
             'display_order' => (int)$row['display_order'],
             'created_at' => $row['created_at'],

@@ -1,0 +1,16 @@
+# Place this file at: uploads/profile-photos/.htaccess
+#
+# Blocks direct browser/URL access to ORIGINAL profile photos.
+# The "blurred" subfolder is intentionally excluded below so that
+# blurred previews remain publicly reachable.
+
+<IfModule mod_authz_core.c>
+    # Apache 2.4+
+    Require all denied
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    # Apache 2.2 fallback
+    Order allow,deny
+    Deny from all
+</IfModule>

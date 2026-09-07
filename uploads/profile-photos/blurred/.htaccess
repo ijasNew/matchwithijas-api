@@ -1,0 +1,13 @@
+# Place this file at: uploads/profile-photos/blurred/.htaccess
+#
+# Overrides the parent folder's "deny all" so that BLURRED previews
+# stay publicly viewable (they are already privacy-safe).
+
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Allow from all
+</IfModule>

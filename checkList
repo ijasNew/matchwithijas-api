@@ -1,0 +1,8 @@
+🟠 HTTPS / CORS / production config പരിശോധിക്കുക
+🟠 Upload, login, OTP, interest, verification, payment എന്നിവയുടെ failure-case testing
+🟠 Database backup + restore test
+🟠 Production error logging പരിശോധിക്കുക; sensitive errors user-ന് കാണിക്കരുത്
+
+Rate limiting on OTP/login/reset
+
+Production config
