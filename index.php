@@ -43,6 +43,8 @@ require_once __DIR__ . '/controllers/forgot-password.php';
 require_once __DIR__ . '/controllers/feedback.php';
 require_once __DIR__ . '/controllers/matching-profiles.php';
 require_once __DIR__ . '/controllers/admin-profiles.php';
+require_once __DIR__ . '/controllers/admin-profile-delete.php';
+require_once __DIR__ . '/controllers/admin-feedback.php';
 require_once __DIR__ . '/controllers/admin-dashboard.php';
 require_once __DIR__ . '/controllers/admin-plans.php';
 require_once __DIR__ . '/controllers/verification-status.php';
@@ -150,6 +152,14 @@ if (($segments[0] ?? '') === 'admin') {
     }
 
     if (
+        $method === 'POST' &&
+        $action === 'profiles' &&
+        $subAction === 'delete'
+    ) {
+        delete_admin_profile();
+    }
+
+    if (
         $method === 'GET' &&
         $action === 'plans'
     ) {
@@ -186,7 +196,13 @@ if (($segments[0] ?? '') === 'admin') {
     ) {
         complete_admin_verification();
     }
-
+    if (
+        $method === 'GET' &&
+        $action === 'feedback' &&
+        !isset($segments[2])
+    ) {
+        get_admin_feedback();
+    }
     error_response(
         'Endpoint not found.',
         [],
