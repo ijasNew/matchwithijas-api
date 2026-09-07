@@ -45,6 +45,7 @@ require_once __DIR__ . '/controllers/matching-profiles.php';
 require_once __DIR__ . '/controllers/admin-profiles.php';
 require_once __DIR__ . '/controllers/admin-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-feedback.php';
+require_once __DIR__ . '/controllers/admin-find-match.php';
 require_once __DIR__ . '/controllers/admin-dashboard.php';
 require_once __DIR__ . '/controllers/admin-plans.php';
 require_once __DIR__ . '/controllers/verification-status.php';
@@ -202,6 +203,23 @@ if (($segments[0] ?? '') === 'admin') {
         !isset($segments[2])
     ) {
         get_admin_feedback();
+    }
+
+    if (
+        $method === 'GET' &&
+        $action === 'find-match' &&
+        isset($segments[2]) &&
+        $segments[2] !== ''
+    ) {
+        get_admin_find_match($segments[2]);
+    }
+
+    if (
+        $method === 'POST' &&
+        $action === 'find-match' &&
+        $subAction === 'customize'
+    ) {
+        post_admin_find_match_customize();
     }
     error_response(
         'Endpoint not found.',
