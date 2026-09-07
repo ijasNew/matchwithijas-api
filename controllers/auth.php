@@ -21,7 +21,7 @@ function validate_password(string $password): ?string
 
 function generate_member_id(PDO $pdo, int $id): string
 {
-    return 'MWI' . str_pad((string)$id, 6, '0', STR_PAD_LEFT);
+    return 'MWI' . str_pad((string)$id, 4, '0', STR_PAD_LEFT);
 }
 
 function send_otp(): never

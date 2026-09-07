@@ -1,20 +1,29 @@
 gd support 
 imagick
-
+photo url public ayi accecc undo enn nokkanam
 fix language code version, prevent change after publish
 remove console
+
+
+
+
+plan update : admin cantrol plan and validity 
 
 register time user nte Job Title / Role ippol type cheythu select option anu, but user nu enthum type cheyyam
 user nu kodutha option mathram save aya mathi validation venam , vere enthenkilum type akiya reject cheyyanam
 
-Specific Qualification : any option venam 
-
-Member ID : MWI000027 - long id ninnu short id akkanam MWI0027 
+Specific Qualification : any option venam  
 
 register kazhinja udane "Your profile is 0% complete". ennanu varunnath >
 sherikum register cheytha detials koode nokki anu % kankendatha
 
-photo url public ayi accecc undo enn nokkanam
+
+
+
+
+
+
+
 
 user data db ullapole anu kanikkunnath ath oru valid view set cheyyanam 
 example ( Marital Status : never_married = Never Married )
@@ -22,6 +31,4 @@ example ( Marital Status : never_married = Never Married )
 user home lum, matching profile kanikunund, avideyum matching profile logic work cheyyanam
 
 
-DECLINE CHEYUMBHOL CONFIRM CHODHIKKANAM 
 
-DECLINED PROFILE MATCHING lisitl vararuth 
