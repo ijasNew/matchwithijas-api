@@ -140,7 +140,7 @@ function get_shortlist(): never
         INNER JOIN users u ON u.id = s.shortlisted_user_id
         LEFT JOIN profiles p ON p.user_id = s.shortlisted_user_id
         LEFT JOIN (
-            SELECT pp.user_id, pp.file_path
+            SELECT pp.user_id, pp.id AS photo_id, pp.file_path
             FROM profile_photos pp
             WHERE pp.status = "active" AND pp.is_primary = 1
         ) photo ON photo.user_id = s.shortlisted_user_id
@@ -185,12 +185,11 @@ foreach ($rows as $row) {
         'education' => (string) ($row['highest_education'] ?? ''),
 
         // ✅ SECURE PHOTO URL
-        'photoUrl' => !empty($row['photo_path'])
-            ? photo_url_for_viewer(
-                (string) $row['photo_path'],
-                $viewerHomeVerified
-              )
-            : null,
+       'photoUrl' => !empty($row['photo_id'])
+    ? photo_url_for_viewer(
+        (int) $row['photo_id']
+      )
+    : null,
 
         'verified' => ((int) ($row['home_verified'] ?? 0)) === 1,
         'shortlistedAt' => (string) $row['created_at']

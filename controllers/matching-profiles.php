@@ -247,14 +247,14 @@ function get_matching_profiles(): never
             p.created_at,
 
             (
-                SELECT pp.file_path
+                SELECT pp.id
                 FROM profile_photos pp
                 WHERE pp.user_id = p.user_id
-                  AND pp.status = "active"
-                  AND pp.is_primary = 1
+                AND pp.status = "active"
+                AND pp.is_primary = 1
                 ORDER BY pp.id ASC
                 LIMIT 1
-            ) AS photo_path
+            ) AS photo_id
 
         FROM profiles p
 
@@ -479,7 +479,7 @@ function get_matching_profiles(): never
 
     $sql .= '
         ORDER BY
-            photo_path IS NULL ASC,
+             photo_id IS NULL ASC,
         p.home_verified DESC,
         p.created_at DESC
     ';
@@ -546,10 +546,9 @@ function get_matching_profiles(): never
 
         $photoUrl = null;
 
-        if (!empty($row['photo_path'])) {
+        if (!empty($row['photo_id'])) {
             $photoUrl = photo_url_for_viewer(
-                (string)$row['photo_path'],
-                $viewerHomeVerified
+                (int)$row['photo_id']
             );
         }
 

@@ -40,7 +40,7 @@ function photo_public_url(string $relativePath): string
 // the caller's own auth token and home-verified status.
 function photo_serve_url(int $photoId): string
 {
-    return '/matchwithijas-api/serve-photo.php?id=' . $photoId;
+    return '/matchwithijas-api/serve-photo?id=' . $photoId;
 }
 
 function get_profile_photos(): never

@@ -46,6 +46,7 @@ require_once __DIR__ . '/controllers/admin-profiles.php';
 require_once __DIR__ . '/controllers/admin-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-feedback.php';
 require_once __DIR__ . '/controllers/admin-find-match.php';
+require_once __DIR__ . '/controllers/admin-deleted-profile.php';
 require_once __DIR__ . '/controllers/admin-dashboard.php';
 require_once __DIR__ . '/controllers/admin-plans.php';
 require_once __DIR__ . '/controllers/verification-status.php';
@@ -54,6 +55,7 @@ require_once __DIR__ . '/controllers/profile-photos.php';
 require_once __DIR__ . '/controllers/profile-completion.php';
 require_once __DIR__ . '/controllers/interests.php';
 require_once __DIR__ . '/controllers/shortlist.php';
+require_once __DIR__ . '/controllers/serve-photo.php';
 
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 
@@ -220,6 +222,27 @@ if (($segments[0] ?? '') === 'admin') {
         $subAction === 'customize'
     ) {
         post_admin_find_match_customize();
+    }
+
+    // =====================================================
+    // ADMIN DELETED PROFILES
+    // =====================================================
+
+    if (
+        $method === 'GET' &&
+        $action === 'deleted-profile' &&
+        !isset($segments[2])
+    ) {
+        get_admin_deleted_profiles();
+    }
+
+    if (
+        $method === 'GET' &&
+        $action === 'deleted-profile' &&
+        isset($segments[2]) &&
+        $segments[2] !== ''
+    ) {
+        get_admin_deleted_profile((int) $segments[2]);
     }
     error_response(
         'Endpoint not found.',
@@ -544,6 +567,19 @@ if (
     $method === 'GET'
 ) {
     get_matching_profiles();
+}
+
+/*
+|--------------------------------------------------------------------------
+| SERVE PHOTO ROUTE
+|--------------------------------------------------------------------------
+*/
+
+if (
+    ($segments[0] ?? '') === 'serve-photo' &&
+    $method === 'GET'
+) {
+    serve_profile_photo();
 }
 
     /*

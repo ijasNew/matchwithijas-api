@@ -303,43 +303,12 @@ function ensure_blurred_photo(string $relativePath): ?string
 */
 
 function photo_url_for_viewer(
-    string $relativePath,
-    bool $viewerHomeVerified
+    int $photoId
 ): ?string {
-    $relativePath = ltrim(
-        str_replace('\\', '/', trim($relativePath)),
-        '/'
-    );
 
-    if ($relativePath === '') {
+    if ($photoId <= 0) {
         return null;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | HOME VERIFIED -> ORIGINAL
-    |--------------------------------------------------------------------------
-    */
-
-    if ($viewerHomeVerified) {
-        return '/matchwithijas-api/' . ltrim($relativePath, '/');
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | NOT VERIFIED -> BLURRED ONLY
-    |--------------------------------------------------------------------------
-    */
-
-    $blurredPath =
-        ensure_blurred_photo($relativePath);
-
-    if (!$blurredPath) {
-        /*
-        | Never expose the original photo if blur creation fails.
-        */
-        return null;
-    }
-
-    return '/matchwithijas-api/' . ltrim($blurredPath, '/');
+    return '/matchwithijas-api/serve-photo?id=' . $photoId;
 }

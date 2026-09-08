@@ -1867,7 +1867,7 @@ function get_profile_view(string $memberId): never
     }
 
         $photoStmt = $pdo->prepare(
-        'SELECT file_path
+        'SELECT id, file_path
         FROM profile_photos
         WHERE user_id = ?
         AND status = "active"
@@ -1909,8 +1909,7 @@ function get_profile_view(string $memberId): never
     }
 
     $photoUrl = photo_url_for_viewer(
-        $path,
-        $viewerHomeVerified
+        (int)$photoRow['id']
     );
 
     if ($photoUrl !== null) {
