@@ -293,102 +293,126 @@ function get_admin_profile(string $memberId): never
         default => 'New'
     };
 
-    $profile = [
-        'id' => $row['member_id'],
-        'userId' => (int)$row['user_id'],
+    /*
+     * Admin profile view:
+     * Return ALL columns currently present in profiles, plus the complete
+     * profile_preferences row and all preference_values rows.
+     *
+     * No conditional filtering is applied here. If a value exists in DB,
+     * it is returned to the admin frontend.
+     *
+     * Keep the commonly-used camelCase aliases below for compatibility with
+     * the existing Angular admin profile view.
+     */
+    $profile = $row;
 
-        'profileFor' => $row['profile_for'] ?? '',
-        'fullName' => $row['full_name'] ?? '',
-        'name' => $row['full_name'] ?? '',
-        'gender' => $row['gender'] ?? '',
-        'maritalStatus' => $row['marital_status'] ?? '',
-        'hasKids' => $row['has_kids'] ?? '',
-        'numberOfKids' => $row['number_of_kids'] !== null ? (int)$row['number_of_kids'] : null,
-        'kidsLivingStatus' => $row['kids_living_status'] ?? '',
-        'dateOfBirth' => $row['date_of_birth'] ?? null,
-        'age' => $age,
-        'height' => $row['height'] !== null ? (float)$row['height'] : null,
+    // Remove internal/join-only values from the top-level profile object.
+    unset($profile['user_id']);
 
-        'houseName' => $row['house_name'] ?? '',
-        'place' => $row['place'] ?? '',
-        'district' => $row['district'] ?? '',
-        'state' => $row['state'] ?? '',
-        'pincode' => $row['pincode'] ?? '',
+    // Common camelCase aliases used by the existing frontend.
+    $profile['id'] = $row['member_id'];
+    $profile['userId'] = (int)$row['user_id'];
+    $profile['profileFor'] = $row['profile_for'] ?? '';
+    $profile['fullName'] = $row['full_name'] ?? '';
+    $profile['name'] = $row['full_name'] ?? '';
+    $profile['maritalStatus'] = $row['marital_status'] ?? '';
+    $profile['hasKids'] = $row['has_kids'] ?? '';
+    $profile['numberOfKids'] = $row['number_of_kids'] !== null ? (int)$row['number_of_kids'] : null;
+    $profile['kidsLivingStatus'] = $row['kids_living_status'] ?? '';
+    $profile['dateOfBirth'] = $row['date_of_birth'] ?? null;
+    $profile['age'] = $age;
+    $profile['height'] = $row['height'] !== null ? (float)$row['height'] : null;
 
-        'religion' => $row['religion'] ?? '',
-        'sect' => $row['sect'] ?? '',
-        'community' => $row['sect'] ?: ($row['caste'] ?? ''),
-        'muslimGroup' => $row['muslim_group'] ?? '',
-        'salafiGroup' => $row['salafi_group'] ?? '',
-        'caste' => $row['caste'] ?? '',
-        'subCaste' => $row['sub_caste'] ?? '',
-        'nakshatra' => $row['nakshatra'] ?? '',
-        'rashi' => $row['rashi'] ?? '',
-        'dosham' => $row['dosham'] ?? '',
-        'denomination' => $row['denomination'] ?? '',
-        'christianDenomination' => $row['denomination'] ?? '',
-        'christianSubGroup' => $row['christian_sub_group'] ?? '',
-        'parishName' => $row['parish_name'] ?? '',
+    $profile['houseName'] = $row['house_name'] ?? '';
+    $profile['place'] = $row['place'] ?? '';
+    $profile['district'] = $row['district'] ?? '';
+    $profile['state'] = $row['state'] ?? '';
+    $profile['pincode'] = $row['pincode'] ?? '';
 
-        'highestEducation' => $row['highest_education'] ?? '',
-        'education' => $row['highest_education'] ?? '',
-        'specialization' => $row['specialization'] ?? '',
-        'jobTitle' => $row['job_title'] ?? '',
-        'jobSector' => $row['job_sector'] ?? '',
-        'companyName' => $row['company_name'] ?? '',
-        'company' => $row['company_name'] ?? '',
-        'workLocation' => $row['work_location'] ?? '',
-        'annualIncome' => $row['annual_income'] ?? '',
+    $profile['muslimGroup'] = $row['muslim_group'] ?? '';
+    $profile['salafiGroup'] = $row['salafi_group'] ?? '';
+    $profile['subCaste'] = $row['sub_caste'] ?? '';
+    $profile['christianDenomination'] = $row['denomination'] ?? '';
+    $profile['christianSubGroup'] = $row['christian_sub_group'] ?? '';
+    $profile['parishName'] = $row['parish_name'] ?? '';
 
-        'weight' => $row['weight'] !== null ? (float)$row['weight'] : null,
-        'bodyType' => $row['body_type'] ?? '',
-        'complexion' => $row['complexion'] ?? '',
-        'physicalStatus' => $row['physical_status'] ?? '',
+    $profile['highestEducation'] = $row['highest_education'] ?? '';
+    $profile['education'] = $row['highest_education'] ?? '';
+    $profile['jobTitle'] = $row['job_title'] ?? '';
+    $profile['jobSector'] = $row['job_sector'] ?? '';
+    $profile['companyName'] = $row['company_name'] ?? '';
+    $profile['company'] = $row['company_name'] ?? '';
+    $profile['workLocation'] = $row['work_location'] ?? '';
+    $profile['annualIncome'] = $row['annual_income'] ?? '';
 
-        'fatherName' => $row['father_name'] ?? '',
-        'motherName' => $row['mother_name'] ?? '',
-        'brothers' => $row['brothers'] !== null ? (int)$row['brothers'] : null,
-        'sisters' => $row['sisters'] !== null ? (int)$row['sisters'] : null,
-        'familyStatus' => $row['family_status'] ?? '',
-        'homeType' => $row['home_type'] ?? '',
+    $profile['bodyType'] = $row['body_type'] ?? '';
+    $profile['physicalStatus'] = $row['physical_status'] ?? '';
 
-        'phone' => $row['phone'] ?? '',
-        'secondaryMobile' => $row['secondary_mobile'] ?? '',
-        'whatsappNumber' => $row['whatsapp_number'] ?? '',
-        'email' => $row['email'] ?? '',
-        'expectations' => $row['expectations'] ?? '',
+    $profile['fatherName'] = $row['father_name'] ?? '';
+    $profile['motherName'] = $row['mother_name'] ?? '';
+    $profile['familyStatus'] = $row['family_status'] ?? '';
+    $profile['homeType'] = $row['home_type'] ?? '';
 
-        'accountStatus' => $row['account_status'] ?? '',
-        'plan' => $row['plan'] ?? 'Free',
-        'verificationStatus' => $status,
-        'homeVerified' => (bool)($row['home_verified'] ?? false),
-        'photos' => $photos,
-        'primaryPhoto' => $photos[0] ?? '',
+    $profile['secondaryMobile'] = $row['secondary_mobile'] ?? '';
+    $profile['whatsappNumber'] = $row['whatsapp_number'] ?? '';
 
-        'preferredAgeMin' => isset($preferences['age_min']) && $preferences['age_min'] !== null
-            ? (int)$preferences['age_min'] : null,
-        'preferredAgeMax' => isset($preferences['age_max']) && $preferences['age_max'] !== null
-            ? (int)$preferences['age_max'] : null,
-        'preferredHeightMin' => isset($preferences['height_min']) && $preferences['height_min'] !== null
-            ? (float)$preferences['height_min'] : null,
-        'preferredHeightMax' => isset($preferences['height_max']) && $preferences['height_max'] !== null
-            ? (float)$preferences['height_max'] : null,
-        'preferredReligion' => $preferences['preferred_religion'] ?? '',
-        'acceptanceOfKids' => $preferences['acceptance_of_kids'] ?? '',
+    $profile['accountStatus'] = $row['account_status'] ?? '';
+    $profile['verificationStatus'] = $status;
+    $profile['homeVerified'] = (bool)($row['home_verified'] ?? false);
 
-        'preferredMaritalStatuses' => $preferenceValues['marital_status'] ?? [],
-        'preferredMaritalStatus' => $preferenceValues['marital_status'] ?? [],
-        'preferredSects' => $preferenceValues['sect'] ?? [],
-        'preferredSunniGroups' => $preferenceValues['sunni_group'] ?? [],
-        'preferredSalafiGroups' => $preferenceValues['salafi_group'] ?? [],
-        'preferredCastes' => $preferenceValues['caste'] ?? [],
-        'preferredSubCastes' => $preferenceValues['sub_caste'] ?? [],
-        'preferredEducation' => $preferenceValues['education'] ?? [],
-        'preferredEducationSpecific' => $preferenceValues['education_specific'] ?? [],
-        'preferredCareerSectors' => $preferenceValues['career_sector'] ?? [],
-        'preferredLocations' => $preferenceValues['location'] ?? [],
-        'preferredLocationRadius' => $preferenceValues['location_radius'] ?? []
-    ];
+    // Existing photo API expects these fields.
+    $profile['photos'] = $photos;
+    $profile['primaryPhoto'] = $photos[0] ?? '';
+
+    /*
+     * Keep complete DB preference row.
+     * Also expose the existing frontend-friendly scalar aliases.
+     */
+    $profile['profilePreferences'] = $preferences;
+
+    $profile['preferredAgeMin'] = isset($preferences['age_min']) && $preferences['age_min'] !== null
+        ? (int)$preferences['age_min'] : null;
+    $profile['preferredAgeMax'] = isset($preferences['age_max']) && $preferences['age_max'] !== null
+        ? (int)$preferences['age_max'] : null;
+    $profile['preferredHeightMin'] = isset($preferences['height_min']) && $preferences['height_min'] !== null
+        ? (float)$preferences['height_min'] : null;
+    $profile['preferredHeightMax'] = isset($preferences['height_max']) && $preferences['height_max'] !== null
+        ? (float)$preferences['height_max'] : null;
+    $profile['preferredReligion'] = $preferences['preferred_religion'] ?? '';
+    $profile['acceptanceOfKids'] = $preferences['acceptance_of_kids'] ?? '';
+
+    /*
+     * Return ALL preference_values, grouped by preference_type.
+     * No hard-coded type filtering.
+     */
+    $profile['preferenceValues'] = $preferenceValues;
+
+    // Existing frontend aliases.
+    $profile['preferredMaritalStatuses'] = $preferenceValues['marital_status'] ?? [];
+    $profile['preferredMaritalStatus'] = $preferenceValues['marital_status'] ?? [];
+    $profile['preferredSects'] = $preferenceValues['sect'] ?? [];
+    $profile['preferredSunniGroups'] = $preferenceValues['sunni_group'] ?? [];
+    $profile['preferredSalafiGroups'] = $preferenceValues['salafi_group'] ?? [];
+    $profile['preferredCastes'] = $preferenceValues['caste'] ?? [];
+    $profile['preferredSubCastes'] = $preferenceValues['sub_caste'] ?? [];
+    $profile['preferredEducation'] = $preferenceValues['education'] ?? [];
+    $profile['preferredEducationSpecific'] = $preferenceValues['education_specific'] ?? [];
+    $profile['preferredCareerSectors'] = $preferenceValues['career_sector'] ?? [];
+    $profile['preferredLocations'] = $preferenceValues['location'] ?? [];
+    $profile['preferredLocationRadius'] = $preferenceValues['location_radius'] ?? [];
+
+    /*
+     * Explicit additional-preference aliases where those values already
+     * exist in preference_values. This does NOT impose conditions.
+     */
+    $profile['preferredFamilyStatus'] = $preferenceValues['family_status'] ?? [];
+    $profile['preferredPhysicalStatus'] = $preferenceValues['physical_status'] ?? [];
+    $profile['preferredIncome'] = $preferenceValues['income'] ?? [];
+    $profile['preferredComplexion'] = $preferenceValues['complexion'] ?? [];
+    $profile['preferredStar'] = $preferenceValues['star'] ?? ($preferenceValues['nakshatra'] ?? []);
+
+    // Keep plan/status fields available as convenient aliases.
+    $profile['plan'] = $row['plan'] ?? 'Free';
 
     success_response(
         'Admin profile fetched successfully.',
