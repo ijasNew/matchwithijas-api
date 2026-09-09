@@ -16,3 +16,18 @@ Production PHP config default-ൽ display_errors=On ആണെങ്കിൽ,
 2. Password reset session revoke
 3. Production environment/CORS/DB configuration
 4. HomeVerificationGuard-നെ കൂടുതൽ robust ആക്കുക
+
+
+
+Forgot-password security	🔴 Fix
+Existing session after block	🔴 Fix
+Home Verification frontend integration	🔴 NOT COMPLETE
+Payment integration	🔴 NOT COMPLETE
+Production config	🔴 NOT READY
+Production data cleanup	🔴 REQUIRED
+OTP rate limiting	🟠
+EXIF protection	🟠
+Admin permissions	🟠
+Console cleanup	🟡
+any cleanup	🟡
+Auth-header cleanup	🟡

@@ -25,7 +25,7 @@ require_once __DIR__ . '/photo-security.php';
 |
 */
 
-function serve_profile_photo(): never
+function serve_profile_photo()
 {
     $viewer = current_user(true);
     $viewerId = (int)$viewer['id'];
@@ -68,10 +68,50 @@ function serve_profile_photo(): never
     $isAdmin = (string)($viewer['role'] ?? '') === 'admin';
     $isOwnPhoto = $viewerId === $ownerId;
 
+    $ownerPrivacyStmt = $pdo->prepare(
+        'SELECT photo_privacy_enabled
+         FROM user_settings
+         WHERE user_id = ?
+         LIMIT 1'
+    );
+    $ownerPrivacyStmt->execute([$ownerId]);
+    $ownerPrivacy = $ownerPrivacyStmt->fetch(PDO::FETCH_ASSOC);
+
+    // No user_settings row means Photo Privacy is OFF.
+    $photoPrivacyEnabled =
+        $ownerPrivacy !== false &&
+        (int)($ownerPrivacy['photo_privacy_enabled'] ?? 0) === 1;
+
+    $hasAcceptedInterest = false;
+
+    if (!$isAdmin && !$isOwnPhoto && $photoPrivacyEnabled) {
+        $interestStmt = $pdo->prepare(
+            'SELECT id
+             FROM interests
+             WHERE status = \'accepted\'
+               AND (
+                    (sender_user_id = ? AND receiver_user_id = ?)
+                    OR
+                    (sender_user_id = ? AND receiver_user_id = ?)
+               )
+             LIMIT 1'
+        );
+        $interestStmt->execute([
+            $viewerId,
+            $ownerId,
+            $ownerId,
+            $viewerId
+        ]);
+
+        $hasAcceptedInterest = $interestStmt->fetchColumn() !== false;
+    }
+
     $canSeeOriginal =
         $isAdmin ||
         $isOwnPhoto ||
-        viewer_is_home_verified($viewerId);
+        ($photoPrivacyEnabled
+            ? $hasAcceptedInterest
+            : viewer_is_home_verified($viewerId));
 
     $relativePath = $canSeeOriginal
         ? ltrim(str_replace('\\', '/', (string)$photo['file_path']), '/')
@@ -113,7 +153,7 @@ function serve_profile_photo(): never
     header('Content-Type: ' . $mime);
     header('Content-Length: ' . (string)filesize($realTarget));
     header('X-Content-Type-Options: nosniff');
-    header('Cache-Control: private, max-age=300');
+    header('Cache-Control: private, no-store');
 
     readfile($realTarget);
     exit;

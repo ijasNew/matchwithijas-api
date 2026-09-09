@@ -5,6 +5,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/photo-security.php';
+require_once __DIR__ . '/matching-profiles-strict.php';
 
 function require_admin_find_match_access(): array
 {
@@ -40,14 +41,14 @@ function admin_find_match_profile(PDO $pdo, string $memberId): array
             u.account_status,
             p.*,
             (
-                SELECT pp.file_path
+                SELECT pp.id
                 FROM profile_photos pp
                 WHERE pp.user_id = p.user_id
                   AND pp.status = "active"
                   AND pp.is_primary = 1
                 ORDER BY pp.id ASC
                 LIMIT 1
-            ) AS photo_path
+            ) AS photo_id
          FROM users u
          INNER JOIN profiles p ON p.user_id = u.id
          WHERE u.member_id = ?
@@ -217,8 +218,8 @@ function admin_find_match_result_profile(array $row): array
 {
     $age = admin_find_match_age($row['date_of_birth'] ?? null);
     $photoUrl = null;
-    if (!empty($row['photo_path'])) {
-        $photoUrl = photo_url_for_viewer((string)$row['photo_path'], true);
+    if (!empty($row['photo_id'])) {
+        $photoUrl = photo_url_for_viewer((int)$row['photo_id'], true);
     }
 
     return [
@@ -246,14 +247,14 @@ function admin_find_match_fetch_candidates(PDO $pdo, int $sourceUserId, string $
         'SELECT
             p.*, u.member_id,
             (
-                SELECT pp.file_path
+                SELECT pp.id
                 FROM profile_photos pp
                 WHERE pp.user_id = p.user_id
                   AND pp.status = "active"
                   AND pp.is_primary = 1
                 ORDER BY pp.id ASC
                 LIMIT 1
-            ) AS photo_path
+            ) AS photo_id
          FROM profiles p
          INNER JOIN users u ON u.id = p.user_id
          WHERE p.user_id <> ?
@@ -315,7 +316,7 @@ function admin_find_match_payload(array $source, array $preferences, array $resu
     ];
 }
 
-function get_admin_find_match(string $memberId): never
+function get_admin_find_match(string $memberId)
 {
     require_admin_find_match_access();
 
@@ -327,7 +328,7 @@ function get_admin_find_match(string $memberId): never
     $preferences = admin_find_match_preferences($pdo, (int)$source['user_id']);
 
     $mode = strtolower(trim((string)($_GET['mode'] ?? 'basic')));
-    if (!in_array($mode, ['basic', 'customize', 'advanced'], true)) {
+    if (!in_array($mode, ['basic', 'customize', 'advanced', 'strict'], true)) {
         error_response('Invalid match mode.', [], 422);
     }
 
@@ -335,14 +336,30 @@ function get_admin_find_match(string $memberId): never
         success_response('Profile preferences loaded successfully.', admin_find_match_payload($source, $preferences, [], $mode));
     }
 
-    $results = $mode === 'advanced'
-        ? admin_find_match_advanced($pdo, $source, $preferences)
-        : admin_find_match_basic($pdo, $source, $preferences);
+    if ($mode === 'strict') {
+        $candidates = strict_match_fetch_candidates(
+            $pdo,
+            (int)$source['user_id'],
+            (string)$source['gender']
+        );
+
+        $results = [];
+        foreach ($candidates as $candidate) {
+            if (!strict_match_candidate($source, $preferences, $candidate)) {
+                continue;
+            }
+            $results[] = strict_match_result_profile($candidate, true);
+        }
+    } else {
+        $results = $mode === 'advanced'
+            ? admin_find_match_advanced($pdo, $source, $preferences)
+            : admin_find_match_basic($pdo, $source, $preferences);
+    }
 
     success_response('Admin matching profiles fetched successfully.', admin_find_match_payload($source, $preferences, $results, $mode));
 }
 
-function post_admin_find_match_customize(): never
+function post_admin_find_match_customize()
 {
     require_admin_find_match_access();
 

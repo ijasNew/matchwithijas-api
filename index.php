@@ -42,6 +42,7 @@ require_once __DIR__ . '/controllers/profile-details.php';
 require_once __DIR__ . '/controllers/forgot-password.php';
 require_once __DIR__ . '/controllers/feedback.php';
 require_once __DIR__ . '/controllers/matching-profiles.php';
+require_once __DIR__ . '/controllers/matching-profiles-strict.php';
 require_once __DIR__ . '/controllers/admin-profiles.php';
 require_once __DIR__ . '/controllers/admin-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-feedback.php';
@@ -57,6 +58,7 @@ require_once __DIR__ . '/controllers/profile-completion.php';
 require_once __DIR__ . '/controllers/interests.php';
 require_once __DIR__ . '/controllers/shortlist.php';
 require_once __DIR__ . '/controllers/serve-photo.php';
+require_once __DIR__ . '/controllers/profile-settings.php';
 
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 
@@ -389,7 +391,28 @@ if (($segments[0] ?? '') === 'feedback') {
     );
 }
 
+/*
+|--------------------------------------------------------------------------
+| PROFILE SETTINGS ROUTE
+|--------------------------------------------------------------------------
+*/
 
+if (
+    ($segments[0] ?? '') === 'profile' &&
+    ($segments[1] ?? '') === 'settings'
+) {
+    if ($method === 'GET') {
+        get_profile_settings();
+        exit;
+    }
+
+    if ($method === 'PUT') {
+        update_profile_settings();
+        exit;
+    }
+
+    error_response('Method not allowed.', [], 405);
+}
 
     /*
 |--------------------------------------------------------------------------
@@ -570,11 +593,41 @@ if (
 ) {
     get_profile_view($segments[1] ?? '');
 }
-
 if (
     ($segments[0] ?? '') === 'matching-profiles' &&
     $method === 'GET'
 ) {
+    /*
+     * User matching switch:
+     * OFF / no settings row -> existing basic matching engine
+     * ON -> separate strict matching engine
+     *
+     * User preference is stored in user_settings.
+     */
+    $matchingUser = current_user(true);
+    $matchingUserId = (int)$matchingUser['id'];
+
+    $matchingStmt = db()->prepare(
+        'SELECT strict_matching_enabled
+         FROM user_settings
+         WHERE user_id = ?
+         LIMIT 1'
+    );
+    $matchingStmt->execute([$matchingUserId]);
+    $matchingRow = $matchingStmt->fetch(PDO::FETCH_ASSOC);
+
+    $strictEnabled =
+        $matchingRow !== false &&
+        (int)($matchingRow['strict_matching_enabled'] ?? 0) === 1;
+
+    if (
+        $strictEnabled &&
+        function_exists('get_matching_profiles_strict')
+    ) {
+        get_matching_profiles_strict();
+        exit;
+    }
+
     get_matching_profiles();
 }
 
@@ -611,7 +664,24 @@ if (
         500
     );
 
-} catch (Throwable $e) {
+}
+//  catch (Throwable $e) {
+
+//     error_response(
+//         'Unexpected server error.',
+//         [],
+//         500
+//     );
+// }
+
+catch (Throwable $e) {
+
+    error_log(
+        '[MWI API ERROR] ' .
+        $e->getMessage() .
+        ' | File: ' . $e->getFile() .
+        ' | Line: ' . $e->getLine()
+    );
 
     error_response(
         'Unexpected server error.',
