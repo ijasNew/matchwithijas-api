@@ -5,7 +5,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/interests.php'; // reuses resolve_user_id_by_member_id()
-
+require_once __DIR__ . '/photo-security.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -115,7 +115,6 @@ function remove_shortlist(): never
 | "already shortlisted" stars on the matching-profiles grid).
 |
 */
-
 function get_shortlist(): never
 {
     $user = current_user(true);
@@ -123,7 +122,7 @@ function get_shortlist(): never
 
     $pdo = db();
 
-    $sql = '
+    $sql = <<<'SQL'
         SELECT
             s.shortlisted_user_id,
             s.created_at,
@@ -135,70 +134,93 @@ function get_shortlist(): never
             p.religion,
             p.highest_education,
             p.home_verified,
+            photo.photo_id,
             photo.file_path AS photo_path
         FROM shortlists s
-        INNER JOIN users u ON u.id = s.shortlisted_user_id
-        LEFT JOIN profiles p ON p.user_id = s.shortlisted_user_id
+        INNER JOIN users u
+            ON u.id = s.shortlisted_user_id
+        LEFT JOIN profiles p
+            ON p.user_id = s.shortlisted_user_id
         LEFT JOIN (
-            SELECT pp.user_id, pp.id AS photo_id, pp.file_path
-            FROM profile_photos pp
-            WHERE pp.status = "active" AND pp.is_primary = 1
-        ) photo ON photo.user_id = s.shortlisted_user_id
+            SELECT
+                user_id,
+                id AS photo_id,
+                file_path
+            FROM (
+                SELECT
+                    pp.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY user_id
+                        ORDER BY
+                            is_primary DESC,
+                            display_order ASC,
+                            id ASC
+                    ) AS rn
+                FROM profile_photos pp
+                WHERE pp.status = 'active'
+            ) ranked
+            WHERE rn = 1
+        ) photo
+            ON photo.user_id = s.shortlisted_user_id
         WHERE s.user_id = ?
         ORDER BY s.created_at DESC
-    ';
+    SQL;
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$userId]);
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$viewerHomeVerified = false;
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$verificationStmt = $pdo->prepare(
-    'SELECT home_verified FROM profiles WHERE user_id = ? LIMIT 1'
-);
+    $viewerHomeVerified = false;
 
-$verificationStmt->execute([$userId]);
+    $verificationStmt = $pdo->prepare(
+        'SELECT home_verified
+         FROM profiles
+         WHERE user_id = ?
+         LIMIT 1'
+    );
 
-$viewerHomeVerified = ((int) ($verificationStmt->fetchColumn() ?: 0)) === 1;
+    $verificationStmt->execute([$userId]);
 
-$profiles = [];
-$memberIds = [];
+    $viewerHomeVerified =
+        ((int) ($verificationStmt->fetchColumn() ?: 0)) === 1;
 
-foreach ($rows as $row) {
+    $profiles = [];
+    $memberIds = [];
 
-    $age = null;
+    foreach ($rows as $row) {
 
-    if (!empty($row['date_of_birth'])) {
-        $birthDate = new DateTime($row['date_of_birth']);
-        $today = new DateTime();
-        $age = $birthDate->diff($today)->y;
+        $age = null;
+
+        if (!empty($row['date_of_birth'])) {
+            $birthDate = new DateTime($row['date_of_birth']);
+            $today = new DateTime();
+            $age = $birthDate->diff($today)->y;
+        }
+
+        $profiles[] = [
+            'memberId' => (string) $row['member_id'],
+            'name' => (string) ($row['full_name'] ?? ''),
+            'age' => $age,
+            'maritalStatus' => (string) ($row['marital_status'] ?? ''),
+            'district' => (string) ($row['district'] ?? ''),
+            'religion' => (string) ($row['religion'] ?? ''),
+            'education' => (string) ($row['highest_education'] ?? ''),
+
+            // SECURE PHOTO URL
+            'photoUrl' => !empty($row['photo_id'])
+                ? photo_url_for_viewer((int) $row['photo_id'])
+                : null,
+
+            'verified' =>
+                ((int) ($row['home_verified'] ?? 0)) === 1,
+
+            'shortlistedAt' =>
+                (string) $row['created_at']
+        ];
+
+        $memberIds[] = (string) $row['member_id'];
     }
-
-    $profiles[] = [
-        'memberId' => (string) $row['member_id'],
-        'name' => (string) ($row['full_name'] ?? ''),
-        'age' => $age,
-        'maritalStatus' => (string) ($row['marital_status'] ?? ''),
-        'district' => (string) ($row['district'] ?? ''),
-        'religion' => (string) ($row['religion'] ?? ''),
-        'education' => (string) ($row['highest_education'] ?? ''),
-
-        // ✅ SECURE PHOTO URL
-       'photoUrl' => !empty($row['photo_id'])
-    ? photo_url_for_viewer(
-        (int) $row['photo_id']
-      )
-    : null,
-
-        'verified' => ((int) ($row['home_verified'] ?? 0)) === 1,
-        'shortlistedAt' => (string) $row['created_at']
-    ];
-
-    $memberIds[] = (string) $row['member_id'];
-}
-
-    
 
     success_response(
         'Shortlisted profiles fetched successfully.',

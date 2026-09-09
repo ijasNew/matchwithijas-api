@@ -7,4 +7,6 @@ Rate limiting on OTP/login/reset
 
 Production config
 
-Global error handler ഇല്ല — display_errors/error_reporting/exception handler എവിടെയും set ചെയ്തിട്ടില്ല. Production PHP config default-ൽ display_errors=On ആണെങ്കിൽ, ഒരു uncaught error DB structure/file paths API response-ൽ leak ചെയ്യും.
+Global error handler ഇല്ല — display_errors/error_reporting/exception handler എവിടെയും set ചെയ്തിട്ടില്ല.
+Production PHP config default-ൽ display_errors=On ആണെങ്കിൽ, 
+ഒരു uncaught error DB structure/file paths API response-ൽ leak ചെയ്യും.

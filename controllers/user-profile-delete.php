@@ -8,90 +8,69 @@ require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 
 /**
- * Delete an admin-selected user profile while preserving a non-sensitive
+ * Delete the authenticated user's own profile while preserving a non-sensitive
  * historical snapshot in deleteddata.
  *
  * IMPORTANT:
- * - Only an authenticated active admin can call this endpoint.
- * - The target must be a normal user, never an admin account.
+ * - Only an authenticated active user can call this endpoint.
+ * - The authenticated account must be a normal user.
  * - Database changes are transactional.
  * - Password hashes, auth token hashes and OTP hashes are NOT archived.
  * - Profile/verification uploaded files are deleted only after DB commit.
  */
-function delete_admin_profile(): never
+function delete_user_profile(): never
 {
-    $admin = current_user(true);
+    $user = current_user(true);
 
-    if (($admin['role'] ?? '') !== 'admin') {
-        error_response('Admin access required.', [], 403);
+    if (($user['role'] ?? '') !== 'user') {
+        error_response('User access required.', [], 403);
     }
 
     $pdo = db();
-
-    $adminStmt = $pdo->prepare(
-        'SELECT admin_role, status
-         FROM admin_users
-         WHERE user_id = ?
-         LIMIT 1'
-    );
-    $adminStmt->execute([(int)$admin['id']]);
-    $adminAccess = $adminStmt->fetch(PDO::FETCH_ASSOC);
-
-    if (
-        !$adminAccess ||
-        ($admin['account_status'] ?? '') !== 'active' ||
-        ($adminAccess['status'] ?? '') !== 'active'
-    ) {
-        error_response('Admin access is not active.', [], 403);
-    }
-
     $data = request_json();
 
-    $memberId = trim((string)($data['member_id'] ?? ''));
-    $reason = trim((string)($data['reason'] ?? ''));
+    $reasonType = trim((string)($data['reason_type'] ?? ''));
+    $reasonText = trim((string)($data['reason_text'] ?? ''));
 
-    if (
-        $memberId === '' ||
-        !preg_match('/^[A-Za-z0-9_-]{1,20}$/', $memberId)
-    ) {
-        error_response('Invalid member ID.', [], 422);
+    $allowedReasons = [
+        'found_match' => 'I found a match',
+        'no_longer_need_service' => 'I no longer need the service',
+        'created_by_mistake' => 'I created the profile by mistake',
+        'not_satisfied' => 'I am not satisfied with the service',
+        'privacy_concerns' => 'Privacy concerns',
+        'other' => 'Other'
+    ];
+
+    if (!array_key_exists($reasonType, $allowedReasons)) {
+        error_response('Please select a valid delete reason.', [], 422);
     }
 
-    if ($reason === '') {
-        error_response(
-            'Delete reason is required.',
-            ['reason' => 'Delete reason is required.'],
-            422
-        );
+    if ($reasonType === 'other') {
+        if ($reasonText === '') {
+            error_response('Please specify your reason.', [], 422);
+        }
+        if (mb_strlen($reasonText) > 1000) {
+            error_response('Delete reason is too long.', [], 422);
+        }
+        $reason = $reasonText;
+    } else {
+        $reason = $allowedReasons[$reasonType];
     }
 
-    if (mb_strlen($reason) > 1000) {
-        error_response(
-            'Delete reason is too long.',
-            ['reason' => 'Maximum 1000 characters allowed.'],
-            422
-        );
-    }
+    // The authenticated token determines the user. Never trust a user_id/member_id from the client.
+    $userId = (int)$user['id'];
 
-    /*
-     * Resolve the target using member_id and explicitly require role=user.
-     * This prevents an admin account from being deleted accidentally.
-     */
     $userStmt = $pdo->prepare(
-        'SELECT *
-         FROM users
-         WHERE member_id = ?
-           AND role = "user"
-         LIMIT 1'
+        'SELECT * FROM users WHERE id = ? AND role = "user" LIMIT 1'
     );
-    $userStmt->execute([$memberId]);
+    $userStmt->execute([$userId]);
     $user = $userStmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$user) {
         error_response('User profile not found.', [], 404);
     }
 
-    $userId = (int)$user['id'];
+    $memberId = (string)$user['member_id'];
     $phone = (string)$user['phone'];
 
     /* ---------------------------------------------------------
@@ -283,8 +262,8 @@ function delete_admin_profile(): never
             $profile['full_name'] ?? null,
             $profile['place'] ?? null,
             $reason,
-            'admin',
-            (int)$admin['id'],
+            'user',
+            null,
             $accountJson,
             $profileJson,
             $preferencesJson,
@@ -385,7 +364,7 @@ function delete_admin_profile(): never
      * A missing file does not make the already-completed DB deletion fail.
      */
     foreach ($filePaths as $filePath) {
-        safe_delete_uploaded_file($filePath);
+        safe_delete_user_uploaded_file($filePath);
     }
 
     success_response(
@@ -399,7 +378,7 @@ function delete_admin_profile(): never
 /**
  * Delete only files that resolve inside this API's uploads directory.
  */
-function safe_delete_uploaded_file(string $path): void
+function safe_delete_user_uploaded_file(string $path): void
 {
     $path = trim($path);
     if ($path === '') {

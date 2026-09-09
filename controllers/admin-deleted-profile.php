@@ -77,6 +77,7 @@ function get_admin_deleted_profiles(): never
             full_name,
             place,
             delete_reason,
+            delete_source,
             deleted_by_admin_user_id,
             deleted_at
          FROM deleteddata
@@ -120,6 +121,7 @@ function get_admin_deleted_profile(int $deletedId): never
             full_name,
             place,
             delete_reason,
+            delete_source,
             deleted_by_admin_user_id,
             account_data,
             profile_data,
@@ -147,6 +149,7 @@ function get_admin_deleted_profile(int $deletedId): never
         'full_name' => $row['full_name'],
         'place' => $row['place'],
         'delete_reason' => $row['delete_reason'],
+        'delete_source' => $row['delete_source'] ?? null,
         'deleted_by_admin_user_id' => $row['deleted_by_admin_user_id'] !== null
             ? (int)$row['deleted_by_admin_user_id']
             : null,

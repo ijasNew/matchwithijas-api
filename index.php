@@ -47,6 +47,7 @@ require_once __DIR__ . '/controllers/admin-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-feedback.php';
 require_once __DIR__ . '/controllers/admin-find-match.php';
 require_once __DIR__ . '/controllers/admin-deleted-profile.php';
+require_once __DIR__ . '/controllers/user-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-dashboard.php';
 require_once __DIR__ . '/controllers/admin-plans.php';
 require_once __DIR__ . '/controllers/verification-status.php';
@@ -536,6 +537,14 @@ if (
         ) {
             get_profile_completion_status();
         }
+
+        if (
+            $method === 'POST' &&
+            $action === 'delete'
+        ) {
+            delete_user_profile();
+        }
+
 
         error_response(
             'Endpoint not found.',
