@@ -64,8 +64,10 @@ function format_interest_row(
         'district' => (string) ($row['district'] ?? ''),
         'religion' => (string) ($row['religion'] ?? ''),
         'education' => (string) ($row['highest_education'] ?? ''),
-        'photoUrl' => !empty($row['photo_path'])
-            ? photo_url_for_viewer((string)$row['photo_path'], $viewerHomeVerified)
+        // SECURE PHOTO URL: use photo ID with /serve-photo.
+        // The secure endpoint decides original vs blurred access.
+        'photoUrl' => !empty($row['photo_id'])
+            ? '/matchwithijas-api/serve-photo?id=' . (int) $row['photo_id']
             : null,
         'verified' => ((int) ($row['home_verified'] ?? 0)) === 1,
         'status' => (string) $row['status'],
@@ -564,12 +566,13 @@ function get_received_interests(): never
             p.religion,
             p.highest_education,
             p.home_verified,
+            photo.id AS photo_id,
             photo.file_path AS photo_path
         FROM interests i
         INNER JOIN users u ON u.id = i.sender_user_id
         LEFT JOIN profiles p ON p.user_id = i.sender_user_id
         LEFT JOIN (
-            SELECT pp.user_id, pp.file_path
+            SELECT pp.user_id, pp.id, pp.file_path
             FROM profile_photos pp
             WHERE pp.status = "active" AND pp.is_primary = 1
         ) photo ON photo.user_id = i.sender_user_id
@@ -640,12 +643,13 @@ function get_sent_interests(): never
             p.religion,
             p.highest_education,
             p.home_verified,
+            photo.id AS photo_id,
             photo.file_path AS photo_path
         FROM interests i
         INNER JOIN users u ON u.id = i.receiver_user_id
         LEFT JOIN profiles p ON p.user_id = i.receiver_user_id
         LEFT JOIN (
-            SELECT pp.user_id, pp.file_path
+            SELECT pp.user_id, pp.id, pp.file_path
             FROM profile_photos pp
             WHERE pp.status = "active" AND pp.is_primary = 1
         ) photo ON photo.user_id = i.receiver_user_id
