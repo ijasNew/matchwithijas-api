@@ -216,7 +216,7 @@ function ensure_blurred_photo(string $relativePath): ?string
     |
     */
 
-    for ($i = 0; $i < 24; $i++) {
+    for ($i = 0; $i < 48; $i++) {
         @imagefilter(
             $image,
             IMG_FILTER_GAUSSIAN_BLUR

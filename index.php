@@ -44,6 +44,7 @@ require_once __DIR__ . '/controllers/feedback.php';
 require_once __DIR__ . '/controllers/matching-profiles.php';
 require_once __DIR__ . '/controllers/matching-profiles-strict.php';
 require_once __DIR__ . '/controllers/admin-profiles.php';
+require_once __DIR__ . '/controllers/admin-profile-photos.php';
 require_once __DIR__ . '/controllers/admin-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-feedback.php';
 require_once __DIR__ . '/controllers/admin-find-match.php';
@@ -137,6 +138,34 @@ if (($segments[0] ?? '') === 'admin') {
         !isset($segments[2])
     ) {
         get_admin_profiles();
+    }
+
+    // =====================================================
+    // ADMIN PROFILE PHOTOS
+    // GET  /admin/profiles/{memberId}/photos
+    // POST /admin/profiles/{memberId}/photos
+    // These routes must come BEFORE the generic
+    // /admin/profiles/{memberId} route.
+    // =====================================================
+
+    if (
+        $method === 'GET' &&
+        $action === 'profiles' &&
+        isset($segments[2]) &&
+        $segments[2] !== '' &&
+        ($segments[3] ?? '') === 'photos'
+    ) {
+        get_admin_profile_photos($segments[2]);
+    }
+
+    if (
+        $method === 'POST' &&
+        $action === 'profiles' &&
+        isset($segments[2]) &&
+        $segments[2] !== '' &&
+        ($segments[3] ?? '') === 'photos'
+    ) {
+        save_admin_profile_photos($segments[2]);
     }
 
     if (
@@ -665,23 +694,7 @@ if (
     );
 
 }
-//  catch (Throwable $e) {
-
-//     error_response(
-//         'Unexpected server error.',
-//         [],
-//         500
-//     );
-// }
-
-catch (Throwable $e) {
-
-    error_log(
-        '[MWI API ERROR] ' .
-        $e->getMessage() .
-        ' | File: ' . $e->getFile() .
-        ' | Line: ' . $e->getLine()
-    );
+ catch (Throwable $e) {
 
     error_response(
         'Unexpected server error.',
@@ -689,3 +702,4 @@ catch (Throwable $e) {
         500
     );
 }
+ 
