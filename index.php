@@ -53,13 +53,14 @@ require_once __DIR__ . '/controllers/user-profile-delete.php';
 require_once __DIR__ . '/controllers/admin-dashboard.php';
 require_once __DIR__ . '/controllers/admin-plans.php';
 require_once __DIR__ . '/controllers/verification-status.php';
+require_once __DIR__ . '/controllers/verification-continue-click.php';
 require_once __DIR__ . '/controllers/admin-verification.php';
 require_once __DIR__ . '/controllers/profile-photos.php';
 require_once __DIR__ . '/controllers/profile-completion.php';
 require_once __DIR__ . '/controllers/interests.php';
 require_once __DIR__ . '/controllers/shortlist.php';
 require_once __DIR__ . '/controllers/serve-photo.php';
-require_once __DIR__ . '/controllers/profile-settings.php';
+require_once __DIR__ . '/controllers/profile-settings.php'; 
 
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 
@@ -295,6 +296,14 @@ if (
     ($segments[1] ?? '') === 'status'
 ) {
     get_verification_status();
+}
+if (
+    ($segments[0] ?? '') === 'verification' &&
+    $method === 'POST' &&
+    ($segments[1] ?? '') === 'continue-click'
+) {
+    log_verification_continue_click();
+    exit;
 }
     /*
     |--------------------------------------------------------------------------
