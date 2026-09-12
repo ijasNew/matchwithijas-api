@@ -426,14 +426,32 @@ function get_admin_profile(string $memberId): never
     $profile['preferredLocationRadius'] = $preferenceValues['location_radius'] ?? [];
 
     /*
-     * Explicit additional-preference aliases where those values already
-     * exist in preference_values. This does NOT impose conditions.
+     * Additional-preference aliases.
+     * "any" is now stored as a real preference_values row.
+     * The fallback keeps older profiles (created before this change) working.
      */
-    $profile['preferredFamilyStatus'] = $preferenceValues['family_status'] ?? [];
-    $profile['preferredPhysicalStatus'] = $preferenceValues['physical_status'] ?? [];
-    $profile['preferredIncome'] = $preferenceValues['income'] ?? [];
-    $profile['preferredComplexion'] = $preferenceValues['complexion'] ?? [];
-    $profile['preferredStar'] = $preferenceValues['star'] ?? ($preferenceValues['nakshatra'] ?? []);
+    $profile['preferredFamilyStatus'] = array_key_exists('family_status', $preferenceValues)
+        && count($preferenceValues['family_status']) > 0
+        ? $preferenceValues['family_status'] : ['Any'];
+
+    $profile['preferredPhysicalStatus'] = array_key_exists('physical_status', $preferenceValues)
+        && count($preferenceValues['physical_status']) > 0
+        ? $preferenceValues['physical_status'] : ['Any'];
+
+    $profile['preferredIncome'] = array_key_exists('income', $preferenceValues)
+        && count($preferenceValues['income']) > 0
+        ? $preferenceValues['income'] : ['Any'];
+
+    $profile['preferredComplexion'] = array_key_exists('complexion', $preferenceValues)
+        && count($preferenceValues['complexion']) > 0
+        ? $preferenceValues['complexion'] : ['Any'];
+
+    $profile['preferredStar'] = array_key_exists('star', $preferenceValues)
+        && count($preferenceValues['star']) > 0
+        ? $preferenceValues['star']
+        : (array_key_exists('nakshatra', $preferenceValues) && count($preferenceValues['nakshatra']) > 0
+            ? $preferenceValues['nakshatra']
+            : ['Any']);
 
     // Keep plan/status fields available as convenient aliases.
     $profile['plan'] = $row['plan'] ?? 'Free';
@@ -518,7 +536,7 @@ const ADMIN_PREF_EDUCATION_SPECIFIC_OPTIONS = [
 ];
 
 const ADMIN_PREF_CAREER_SECTOR_OPTIONS = [
-    'Business / Self Employed', 'Private', 'Government', 'Freelance', 'Any'
+    'Business / Self Employed', 'Private', 'Government', 'Freelance','Student', 'Any'
 ];
 
 const ADMIN_PREF_LOCATION_OPTIONS = [
@@ -528,28 +546,29 @@ const ADMIN_PREF_LOCATION_OPTIONS = [
 ];
 
 const ADMIN_PREF_FAMILY_STATUS_OPTIONS = [
-    'any', 'Lower Middle Class', 'Middle Class', 'Upper Middle Class', 'Affluent'
+    'Any', 'Lower Middle Class', 'Middle Class', 'Upper Middle Class', 'Affluent'
 ];
 
 const ADMIN_PREF_PHYSICAL_STATUS_OPTIONS = [
-    'any', 'Normal', 'Physically Challenged', 'Other'
+    'Any', 'Normal', 'Physically Challenged', 'Other'
 ];
 
 const ADMIN_PREF_LOCATION_RADIUS_OPTIONS = [
-    'any', 'Within 10 km', 'Within 25 km', 'Within 50 km',
+    'Any', 'Within 10 km', 'Within 25 km', 'Within 50 km',
     'Within 100 km', 'Anywhere in Kerala'
 ];
 
 const ADMIN_PREF_INCOME_OPTIONS = [
-    'any', 'Below ₹2 Lakh', '₹2 - ₹5 Lakh', '₹5 - ₹10 Lakh',
+    'Any', 'Below ₹2 Lakh', '₹2 - ₹5 Lakh', '₹5 - ₹10 Lakh',
     '₹10 - ₹15 Lakh', '₹15 - ₹25 Lakh', 'Above ₹25 Lakh'
 ];
 
 const ADMIN_PREF_COMPLEXION_OPTIONS = [
-    'any', 'Very Fair', 'Fair', 'Wheatish', 'Medium', 'Dusky', 'Dark'
+    'Any', 'Very Fair', 'Fair', 'Wheatish', 'Medium', 'Dusky', 'Dark'
 ];
 
 const ADMIN_PREF_STAR_OPTIONS = [
+    'Any',
     'Ashwini (Aswathi)', 'Bharani', 'Krittika (Karthika)', 'Rohini',
     'Mrigashirsha (Makayiram)', 'Ardra (Thiruvathira)',
     'Punarvasu (Punartham)', 'Pushya (Pooyam)', 'Ashlesha (Ayilyam)',
@@ -722,13 +741,25 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
 
     /*
      * Highest Education -> Specialization dependency.
+     * Use the effective value so a partial admin update cannot bypass this rule.
      */
+    $highestEducation = array_key_exists('highestEducation', $data)
+        ? trim((string)$data['highestEducation'])
+        : trim((string)($existingProfile['highest_education'] ?? ''));
+
+    $specialization = array_key_exists('specialization', $data)
+        ? trim((string)$data['specialization'])
+        : trim((string)($existingProfile['specialization'] ?? ''));
+
+    if ($highestEducation !== '' && $specialization === '') {
+        error_response('Please select a specialization for the selected highest education.', [], 422);
+    }
+
     if (array_key_exists('highestEducation', $data)) {
-        $highestEducation = trim((string)$data['highestEducation']);
-        if ($highestEducation !== '' && (!array_key_exists('specialization', $data) || trim((string)$data['specialization']) === '')) {
-            error_response('Please select a specialization for the selected highest education.', [], 422);
-        }
-        if ($highestEducation !== '') $data['specialization'] = trim((string)$data['specialization']);
+        $data['highestEducation'] = $highestEducation;
+    }
+    if (array_key_exists('specialization', $data)) {
+        $data['specialization'] = $specialization;
     }
 
     /*
@@ -835,9 +866,55 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
     if ($religion !== '') {
         admin_validate_choice(
             $religion,
-            ['Muslim', 'Hindu', 'Christian', 'Other'],
+            ['Muslim', 'Hindu', 'Christian'],
             'religion'
         );
+    }
+
+    /*
+     * A selected religion must have its corresponding required sub-option.
+     * This mirrors the registration form dependency.
+     */
+    if ($religion === 'Muslim') {
+        $sect = array_key_exists('sect', $data)
+            ? trim((string)$data['sect'])
+            : trim((string)($existingProfile['sect'] ?? ''));
+
+        if ($sect === '') {
+            error_response('Please select a Sect for Muslim.', [], 422);
+        }
+
+        if (array_key_exists('sect', $data)) {
+            $data['sect'] = $sect;
+        }
+    }
+
+    if ($religion === 'Hindu') {
+        $caste = array_key_exists('caste', $data)
+            ? trim((string)$data['caste'])
+            : trim((string)($existingProfile['caste'] ?? ''));
+
+        if ($caste === '') {
+            error_response('Please select a Caste for Hindu.', [], 422);
+        }
+
+        if (array_key_exists('caste', $data)) {
+            $data['caste'] = $caste;
+        }
+    }
+
+    if ($religion === 'Christian') {
+        $denomination = array_key_exists('christianDenomination', $data)
+            ? trim((string)$data['christianDenomination'])
+            : trim((string)($existingProfile['denomination'] ?? ''));
+
+        if ($denomination === '') {
+            error_response('Please select a Denomination for Christian.', [], 422);
+        }
+
+        if (array_key_exists('christianDenomination', $data)) {
+            $data['christianDenomination'] = $denomination;
+        }
     }
 
     if ($religion !== 'Muslim') {
@@ -903,6 +980,37 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
                 'denomination'
             );
         }
+
+        /*
+         * Christian Church Group is dependent on Denomination.
+         * When Church Group is Other, parishName is used as the
+         * "Specify" value, matching the existing DB field.
+         */
+        $churchGroup = array_key_exists('christianSubGroup', $data)
+            ? trim((string)$data['christianSubGroup'])
+            : trim((string)($existingProfile['christian_sub_group'] ?? ''));
+
+        if ($churchGroup === '') {
+            error_response('Please select a Church Group for Christian.', [], 422);
+        }
+
+        if (array_key_exists('christianSubGroup', $data)) {
+            $data['christianSubGroup'] = $churchGroup;
+        }
+
+        if ($churchGroup === 'Other') {
+            $parishName = array_key_exists('parishName', $data)
+                ? trim((string)$data['parishName'])
+                : trim((string)($existingProfile['parish_name'] ?? ''));
+
+            if ($parishName === '') {
+                error_response('Please specify the Church Group when Other is selected.', [], 422);
+            }
+
+            if (array_key_exists('parishName', $data)) {
+                $data['parishName'] = $parishName;
+            }
+        }
     }
 
     /*
@@ -951,7 +1059,18 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
         error_response('Preferred Marital Status is required.', [], 422);
     }
 
-    $preferredReligion = array_key_exists('preferredReligion', $data) ? trim((string)$data['preferredReligion']) : '';
+    $preferredReligion = array_key_exists('preferredReligion', $data)
+        ? trim((string)$data['preferredReligion'])
+        : trim((string)($existingProfile['preferred_religion'] ?? ''));
+
+    if ($preferredReligion !== '') {
+        admin_validate_choice(
+            $preferredReligion,
+            ['Muslim', 'Hindu', 'Christian'],
+            'preferred religion'
+        );
+    }
+
     if ($preferredReligion === 'Muslim' && (!array_key_exists('preferredSects', $data) || !is_array($data['preferredSects']) || count($data['preferredSects']) === 0)) {
         error_response('Preferred Sect is required for Muslim.', [], 422);
     }
@@ -968,7 +1087,7 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
     ) {
         admin_validate_choice(
             $data['preferredReligion'],
-            ['Muslim', 'Hindu', 'Christian', 'Other'],
+            ['Muslim', 'Hindu', 'Christian'],
             'preferred religion'
         );
     }
@@ -1005,15 +1124,15 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
             ),
             true
         ],
-        'preferredEducation' => [ADMIN_PREF_EDUCATION_OPTIONS, false],
+        'preferredEducation' => [ADMIN_PREF_EDUCATION_OPTIONS, true],
         'preferredEducationSpecific' => [ADMIN_PREF_EDUCATION_SPECIFIC_OPTIONS, false],
         'preferredCareerSectors' => [ADMIN_PREF_CAREER_SECTOR_OPTIONS, true],
         'preferredLocations' => [ADMIN_PREF_LOCATION_OPTIONS, false],
-        'preferredFamilyStatus' => [ADMIN_PREF_FAMILY_STATUS_OPTIONS, false],
-        'preferredPhysicalStatus' => [ADMIN_PREF_PHYSICAL_STATUS_OPTIONS, false],
-        'preferredLocationRadius' => [ADMIN_PREF_LOCATION_RADIUS_OPTIONS, false],
-        'preferredIncome' => [ADMIN_PREF_INCOME_OPTIONS, false],
-        'preferredComplexion' => [ADMIN_PREF_COMPLEXION_OPTIONS, false]
+        'preferredFamilyStatus' => [ADMIN_PREF_FAMILY_STATUS_OPTIONS, true],
+        'preferredPhysicalStatus' => [ADMIN_PREF_PHYSICAL_STATUS_OPTIONS, true],
+        'preferredLocationRadius' => [ADMIN_PREF_LOCATION_RADIUS_OPTIONS, true],
+        'preferredIncome' => [ADMIN_PREF_INCOME_OPTIONS, true],
+        'preferredComplexion' => [ADMIN_PREF_COMPLEXION_OPTIONS, true]
     ];
 
     foreach ($arrayRules as $field => [$options, $allowAny]) {
@@ -1025,6 +1144,12 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
                 $allowAny
             );
         }
+    }
+
+    if (array_key_exists('preferredLocations', $data)
+        && (!is_array($data['preferredLocations']) || count($data['preferredLocations']) === 0)
+    ) {
+        error_response('Preferred location is required.', [], 422);
     }
 
     /*
@@ -1066,16 +1191,16 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
     }
 
     /*
-     * Additional Preferences:
-     * preferredStar does NOT accept "any" as a DB value.
-     * The UI may display Any, but the frontend normalizes it to [].
+     * Additional Preferences.
+     * "any" is a real stored preference value.
+     * This keeps the Any selection persistent across save/reload.
      */
     if (array_key_exists('preferredStar', $data)) {
         $data['preferredStar'] = admin_validate_choice_array(
             $data['preferredStar'],
             ADMIN_PREF_STAR_OPTIONS,
             'preferred star',
-            false
+            true
         );
     }
 
@@ -1373,19 +1498,23 @@ function update_admin_profile(string $memberId): never
             $values = admin_normalize_preference_array($data[$key], $key);
 
             /*
-             * "any" (lowercase) is a UI-only wildcard for additional
-             * preferences and must never be stored in preference_values.
-             *
-             * The frontend already converts Preferred Star -> [] when Any
-             * is selected. Rejecting it here protects the DB if another
-             * client sends it directly.
+             * "Any" is a real stored wildcard value for additional
+             * preferences. Normalize legacy lowercase "any" to the
+             * canonical uppercase value and keep it mutually exclusive.
              */
             if (in_array('any', $values, true)) {
+                $values = array_map(
+                    static fn($value) => $value === 'any' ? 'Any' : $value,
+                    $values
+                );
+            }
+
+            if (in_array('Any', $values, true)) {
                 if (count($values) > 1) {
-                    error_response('"any" cannot be combined with other preference values.', ['field' => $key], 422);
+                    error_response('Any cannot be combined with other preference values.', ['field' => $key], 422);
                 }
 
-                $values = [];
+                $values = ['Any'];
             }
 
             $deleteStmt->execute([$userId, $type]);

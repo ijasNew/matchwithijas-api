@@ -19,6 +19,16 @@ const MARITAL_STATUS_OPTIONS = [
     'widowed', 'separated', 'awaiting_divorce'
 ];
 
+const PREFERRED_MARITAL_STATUS_OPTIONS = [
+    'never_married',
+    'divorced',
+    'nikah_divorce',
+    'widowed',
+    'separated',
+    'awaiting_divorce',
+    'Any'
+];
+
 const KIDS_REQUIRED_MARITAL_STATUSES = [
     'divorced', 'widowed', 'separated', 'awaiting_divorce'
 ];
@@ -210,7 +220,7 @@ const PREFERRED_EDUCATION_OPTIONS = [
     'PhD / Doctorate', "Master's Degree", 'Professional Degree',
     "Bachelor's Degree", 'Diploma', 'ITI / Technical Certificate',
     'Plus Two / Higher Secondary', 'Religious / Islamic Education',
-    'Others / Below 10th'
+    'Others / Below 10th','Any'
 ];
 
 const PREFERRED_EDUCATION_SPECIFIC_OPTIONS = [
@@ -1247,9 +1257,24 @@ function save_preferences(): never
             validate_choice($data['acceptanceOfKids'], ACCEPTANCE_OF_KIDS_OPTIONS, 'kids acceptance');
         }
 
-        if (!empty($data['maritalStatuses'])) {
-            validate_choice_array($data['maritalStatuses'], MARITAL_STATUS_OPTIONS, 'preferred marital status');
-        }
+       if (!empty($data['maritalStatuses'])) {
+    validate_choice_array(
+        $data['maritalStatuses'],
+        PREFERRED_MARITAL_STATUS_OPTIONS,
+        'preferred marital status'
+    );
+
+    if (
+        in_array('Any', $data['maritalStatuses'], true) &&
+        count($data['maritalStatuses']) > 1
+    ) {
+        error_response(
+            '"Any" cannot be combined with other preferred marital status values.',
+            [],
+            422
+        );
+    }
+}
 
         if (!empty($data['preferredSects'])) {
             // Covers Muslim sects and, per the frontend's reuse of this field,
@@ -1352,10 +1377,24 @@ function save_preferences(): never
             }
         }
 
-        if (!empty($data['preferredEducation'])) {
-            validate_choice_array($data['preferredEducation'], PREFERRED_EDUCATION_OPTIONS, 'preferred education');
-        }
+if (!empty($data['preferredEducation'])) {
+    validate_choice_array(
+        $data['preferredEducation'],
+        PREFERRED_EDUCATION_OPTIONS,
+        'preferred education'
+    );
 
+    if (
+        in_array('Any', $data['preferredEducation'], true) &&
+        count($data['preferredEducation']) > 1
+    ) {
+        error_response(
+            '"Any" cannot be combined with other preferred education values.',
+            [],
+            422
+        );
+    }
+}
         if (!empty($data['preferredEducationSpecific'])) {
             validate_choice_array(
                 $data['preferredEducationSpecific'],
