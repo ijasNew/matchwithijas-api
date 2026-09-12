@@ -476,7 +476,7 @@ function get_admin_profile(string $memberId): never
 
 const ADMIN_PREF_MARITAL_STATUS_OPTIONS = [
     'never_married', 'divorced', 'nikah_divorce',
-    'widowed', 'separated', 'awaiting_divorce'
+    'widowed', 'separated', 'awaiting_divorce', 'Any'
 ];
 
 const ADMIN_PREF_MUSLIM_SECT_OPTIONS = [
@@ -523,6 +523,7 @@ const ADMIN_PREF_CHRISTIAN_SUBGROUP_OPTIONS = [
 ];
 
 const ADMIN_PREF_EDUCATION_OPTIONS = [
+    'Any',
     'PhD / Doctorate', "Master's Degree", 'Professional Degree',
     "Bachelor's Degree", 'Diploma', 'ITI / Technical Certificate',
     'Plus Two / Higher Secondary', 'Religious / Islamic Education',
@@ -1059,6 +1060,69 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
         error_response('Preferred Marital Status is required.', [], 422);
     }
 
+    /*
+ * Preferred marital status -> Acceptance of Kids dependency.
+ *
+ * Acceptance of Kids is required when:
+ * - Any is selected
+ * - Divorced is selected
+ * - Widowed is selected
+ * - Separated is selected
+ * - Awaiting Divorce is selected
+ */
+
+$kidsAcceptanceRequiredStatuses = [
+    'Any',
+    'divorced',
+    'widowed',
+    'separated',
+    'awaiting_divorce'
+];
+
+$acceptanceOfKidsRequired = false;
+
+foreach ($data['preferredMaritalStatuses'] as $status) {
+    if (in_array($status, $kidsAcceptanceRequiredStatuses, true)) {
+        $acceptanceOfKidsRequired = true;
+        break;
+    }
+}
+
+if ($acceptanceOfKidsRequired) {
+
+    if (
+        !array_key_exists('acceptanceOfKids', $data) ||
+        $data['acceptanceOfKids'] === '' ||
+        $data['acceptanceOfKids'] === null
+    ) {
+        error_response(
+            'Please select acceptance of kids.',
+            [],
+            422
+        );
+    }
+
+    admin_validate_choice(
+        $data['acceptanceOfKids'],
+        ['yes', 'no', 'yes_not_living', 'yes_living'],
+        'kids acceptance'
+    );
+
+} else {
+
+    if (
+        array_key_exists('acceptanceOfKids', $data) &&
+        $data['acceptanceOfKids'] !== '' &&
+        $data['acceptanceOfKids'] !== null
+    ) {
+        error_response(
+            'Acceptance of kids is not applicable for the selected preferred marital statuses.',
+            [],
+            422
+        );
+    }
+}
+
     $preferredReligion = array_key_exists('preferredReligion', $data)
         ? trim((string)$data['preferredReligion'])
         : trim((string)($existingProfile['preferred_religion'] ?? ''));
@@ -1092,23 +1156,14 @@ function admin_validate_preference_payload(array &$data, array $existingProfile)
         );
     }
 
-    if (array_key_exists('acceptanceOfKids', $data)
-        && $data['acceptanceOfKids'] !== ''
-        && $data['acceptanceOfKids'] !== null
-    ) {
-        admin_validate_choice(
-            $data['acceptanceOfKids'],
-            ['yes', 'no', 'yes_not_living', 'yes_living'],
-            'kids acceptance'
-        );
-    }
+    
 
     /*
      * Array partner preferences.
      * "Any" is a wildcard value in these fields and is mutually exclusive.
      */
     $arrayRules = [
-        'preferredMaritalStatuses' => [ADMIN_PREF_MARITAL_STATUS_OPTIONS, false],
+        'preferredMaritalStatuses' => [ADMIN_PREF_MARITAL_STATUS_OPTIONS, true],
         'preferredSects' => [
             array_merge(ADMIN_PREF_MUSLIM_SECT_OPTIONS, ADMIN_PREF_CHRISTIAN_DENOMINATION_OPTIONS),
             true

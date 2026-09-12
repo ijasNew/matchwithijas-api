@@ -68,7 +68,7 @@ function strict_match_preferences(PDO $pdo, int $userId): array
 {
     $stmt = $pdo->prepare(
         'SELECT age_min, age_max, height_min, height_max,
-                preferred_religion, acceptance_of_kids, horoscope_required
+                acceptance_of_kids
          FROM profile_preferences
          WHERE user_id = ?
          LIMIT 1'
@@ -82,9 +82,7 @@ function strict_match_preferences(PDO $pdo, int $userId): array
         'ageMax' => ($row['age_max'] ?? '') !== '' ? (int)$row['age_max'] : null,
         'heightMin' => ($row['height_min'] ?? '') !== '' ? (float)$row['height_min'] : null,
         'heightMax' => ($row['height_max'] ?? '') !== '' ? (float)$row['height_max'] : null,
-        'preferredReligion' => trim((string)($row['preferred_religion'] ?? '')),
         'acceptanceOfKids' => trim((string)($row['acceptance_of_kids'] ?? '')),
-        'horoscopeRequired' => trim((string)($row['horoscope_required'] ?? '')),
         'values' => strict_match_values($pdo, $userId),
     ];
 }
@@ -231,32 +229,6 @@ function strict_match_radius(
     return $distance <= $radius;
 }
 
-function strict_match_income(array $preferences, ?string $candidateIncome): bool
-{
-    $wanted = $preferences['values']['income'] ?? [];
-
-    if (!$wanted) {
-        return true;
-    }
-
-    $normalizedWanted = array_map(
-        'strict_match_normalize',
-        $wanted
-    );
-
-    if (in_array('any', $normalizedWanted, true)) {
-        return true;
-    }
-
-    $candidate = strict_match_normalize($candidateIncome);
-
-    if ($candidate === '') {
-        return false;
-    }
-
-    return in_array($candidate, $normalizedWanted, true);
-}
-
 function strict_match_kids(array $preferences, array $candidate): bool
 {
     $wanted = strict_match_normalize($preferences['acceptanceOfKids'] ?? '');
@@ -275,8 +247,9 @@ function strict_match_kids(array $preferences, array $candidate): bool
         return $hasKids === 'no';
     }
 
+    // "Yes" means the user accepts profiles whether they have kids or not.
     if ($wanted === 'yes') {
-        return $hasKids === 'yes';
+        return true;
     }
 
     if ($hasKids !== 'yes') {
@@ -296,25 +269,12 @@ function strict_match_kids(array $preferences, array $candidate): bool
     return false;
 }
 
-function strict_match_horoscope(array $preferences, array $candidate): bool
-{
-    $wanted = strict_match_normalize($preferences['horoscopeRequired'] ?? '');
-
-    if ($wanted !== 'yes') {
-        return true;
-    }
-
-    // Horoscope requirement is fulfilled only when the candidate has a
-    // stored Nakshatra. The explicit preferred-star criterion is checked
-    // separately through preference_values('star').
-    return strict_match_normalize($candidate['nakshatra'] ?? '') !== '';
-}
-
 function strict_match_candidate(
     array $source,
     array $preferences,
     array $candidate
 ): bool {
+    // 1. Age — candidate must be inside the user's selected range.
     $age = strict_match_age($candidate['date_of_birth'] ?? null);
 
     if ($preferences['ageMin'] !== null &&
@@ -327,74 +287,163 @@ function strict_match_candidate(
         return false;
     }
 
-    if ($preferences['heightMin'] !== null &&
-        ((float)($candidate['height'] ?? 0) < $preferences['heightMin'])) {
+    // 2. Height — candidate must be inside the user's selected range.
+    if ($preferences['heightMin'] !== null) {
+        $candidateHeight = $candidate['height'] ?? null;
+
+        if ($candidateHeight === null || $candidateHeight === '' ||
+            (float)$candidateHeight < $preferences['heightMin']) {
+            return false;
+        }
+    }
+
+    if ($preferences['heightMax'] !== null) {
+        $candidateHeight = $candidate['height'] ?? null;
+
+        if ($candidateHeight === null || $candidateHeight === '' ||
+            (float)$candidateHeight > $preferences['heightMax']) {
+            return false;
+        }
+    }
+
+    // 3. Religion — always based on the logged-in user's own religion.
+    $sourceReligion = strict_match_normalize($source['religion'] ?? '');
+    $candidateReligion = strict_match_normalize($candidate['religion'] ?? '');
+
+    if ($sourceReligion === '' || $candidateReligion === '' ||
+        $sourceReligion !== $candidateReligion) {
         return false;
     }
 
-    if ($preferences['heightMax'] !== null &&
-        ((float)($candidate['height'] ?? 0) > $preferences['heightMax'])) {
+    // 4. Marital Status.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'marital_status',
+        $candidate['marital_status'] ?? null
+    )) {
         return false;
     }
 
-    $preferredReligion = strict_match_normalize($preferences['preferredReligion'] ?? '');
-
-    if ($preferredReligion !== '' && $preferredReligion !== 'any' &&
-        strict_match_normalize($candidate['religion'] ?? '') !== $preferredReligion) {
+    // 5. Sect / Denomination.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'sect',
+        $candidate['sect'] ?? null
+    )) {
         return false;
     }
 
-    if (!strict_match_preference_values_match($preferences, 'marital_status', $candidate['marital_status'] ?? null)) {
-        return false;
-    }
+    // 6. Sunni Group — check ONLY when the user's selected sect includes Sunni.
+    $sectPreferences = array_map(
+        'strict_match_normalize',
+        $preferences['values']['sect'] ?? []
+    );
 
-    if (!strict_match_location($preferences, $candidate)) {
-        return false;
-    }
-
-    if (!strict_match_preference_values_match($preferences, 'education', $candidate['highest_education'] ?? null)) {
-        return false;
-    }
-
-    $fieldMap = [
-        'sect' => 'sect',
-        'sunni_group' => 'muslim_group',
-        'salafi_group' => 'salafi_group',
-        'caste' => 'caste',
-        'sub_caste' => 'sub_caste',
-        'education_specific' => 'specialization',
-        'career_sector' => 'job_sector',
-        'family_status' => 'family_status',
-        'physical_status' => 'physical_status',
-        'complexion' => 'complexion',
-        'star' => 'nakshatra',
-    ];
-
-    foreach ($fieldMap as $preferenceType => $column) {
+    if (in_array('sunni', $sectPreferences, true)) {
         if (!strict_match_preference_values_match(
             $preferences,
-            $preferenceType,
-            $candidate[$column] ?? null
+            'sunni_group',
+            $candidate['muslim_group'] ?? null
         )) {
             return false;
         }
     }
 
-    if (!strict_match_income(
+    // 7. Salafi Group — check ONLY when the user's selected sect includes Salafi.
+    if (in_array('salafi', $sectPreferences, true)) {
+        if (!strict_match_preference_values_match(
+            $preferences,
+            'salafi_group',
+            $candidate['salafi_group'] ?? null
+        )) {
+            return false;
+        }
+    }
+
+    // If Sect = Any, neither Sunni Group nor Salafi Group is checked.
+
+    // 8. Caste.
+    if (!strict_match_preference_values_match(
         $preferences,
-        $candidate['annual_income'] ?? null
+        'caste',
+        $candidate['caste'] ?? null
     )) {
         return false;
     }
 
+    // 9. Sub-caste — check only when Caste is applicable/specific.
+    $castePreferences = array_map(
+        'strict_match_normalize',
+        $preferences['values']['caste'] ?? []
+    );
+
+    if ($castePreferences &&
+        !in_array('any', $castePreferences, true)) {
+        if (!strict_match_preference_values_match(
+            $preferences,
+            'sub_caste',
+            $candidate['sub_caste'] ?? null
+        )) {
+            return false;
+        }
+    }
+
+    // 10. Education.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'education',
+        $candidate['highest_education'] ?? null
+    )) {
+        return false;
+    }
+
+    // 11. Specific Education.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'education_specific',
+        $candidate['specialization'] ?? null
+    )) {
+        return false;
+    }
+
+    // 12. Career Sector.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'career_sector',
+        $candidate['job_sector'] ?? null
+    )) {
+        return false;
+    }
+
+    // 13. Location / District.
+    if (!strict_match_location($preferences, $candidate)) {
+        return false;
+    }
+
+    // 14. Acceptance of Kids.
     if (!strict_match_kids($preferences, $candidate)) {
         return false;
     }
 
-    if (!strict_match_horoscope($preferences, $candidate)) {
+    // 15. Family Status.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'family_status',
+        $candidate['family_status'] ?? null
+    )) {
         return false;
     }
 
+    // 16. Physical Status.
+    if (!strict_match_preference_values_match(
+        $preferences,
+        'physical_status',
+        $candidate['physical_status'] ?? null
+    )) {
+        return false;
+    }
+
+    // Location Radius is an additional condition, not one of the 16 preferences.
     if (!strict_match_radius($preferences, $source, $candidate)) {
         return false;
     }
@@ -501,7 +550,7 @@ function get_strict_matching_profiles_for_user(int $userId): array
 
     $stmt = $pdo->prepare(
         'SELECT id, user_id, gender, date_of_birth, home_verified,
-                latitude, longitude
+                latitude, longitude, religion
          FROM profiles
          WHERE user_id = ?
          LIMIT 1'
@@ -512,6 +561,7 @@ function get_strict_matching_profiles_for_user(int $userId): array
     if (!$source) {
         error_response('Your profile was not found.', [], 404);
     }
+
 
     $preferences = strict_match_preferences($pdo, $userId);
     $sourceGender = trim((string)($source['gender'] ?? ''));

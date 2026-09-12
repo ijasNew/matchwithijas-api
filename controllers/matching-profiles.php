@@ -371,31 +371,34 @@ function get_matching_profiles(): never
     |--------------------------------------------------------------------------
     */
 
-    if (count($preferredMaritalStatuses) > 0) {
+    if (
+    count($preferredMaritalStatuses) > 0 &&
+    !in_array('any', $preferredMaritalStatuses, true)
+) {
 
-        $placeholders = [];
+    $placeholders = [];
 
-        foreach (
-            $preferredMaritalStatuses
-            as $index => $status
-        ) {
+    foreach (
+        $preferredMaritalStatuses
+        as $index => $status
+    ) {
 
-            $placeholder =
-                ':marital_' . $index;
+        $placeholder =
+            ':marital_' . $index;
 
-            $placeholders[] =
-                $placeholder;
+        $placeholders[] =
+            $placeholder;
 
-            $params[$placeholder] =
-                $status;
-        }
-
-        $sql .= '
-            AND p.marital_status IN (
-                ' . implode(', ', $placeholders) . '
-            )
-        ';
+        $params[$placeholder] =
+            $status;
     }
+
+    $sql .= '
+        AND LOWER(TRIM(p.marital_status)) IN (
+            ' . implode(', ', $placeholders) . '
+        )
+    ';
+}
 
 
     /*
@@ -403,33 +406,35 @@ function get_matching_profiles(): never
     | EDUCATION FILTER
     |--------------------------------------------------------------------------
     */
+ 
+    if (
+    count($preferredEducation) > 0 &&
+    !in_array('any', $preferredEducation, true)
+) {
 
-    if (count($preferredEducation) > 0) {
+    $placeholders = [];
 
-        $placeholders = [];
+    foreach (
+        $preferredEducation
+        as $index => $education
+    ) {
 
-        foreach (
-            $preferredEducation
-            as $index => $education
-        ) {
+        $placeholder =
+            ':education_' . $index;
 
-            $placeholder =
-                ':education_' . $index;
+        $placeholders[] =
+            $placeholder;
 
-            $placeholders[] =
-                $placeholder;
-
-            $params[$placeholder] =
-                $education;
-        }
-
-        $sql .= '
-            AND p.highest_education IN (
-                ' . implode(', ', $placeholders) . '
-            )
-        ';
+        $params[$placeholder] =
+            $education;
     }
 
+    $sql .= '
+        AND LOWER(TRIM(p.highest_education)) IN (
+            ' . implode(', ', $placeholders) . '
+        )
+    ';
+}
 
     /*
     |--------------------------------------------------------------------------
