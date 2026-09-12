@@ -338,19 +338,6 @@ if (
 
         if (
             $method === 'POST' &&
-            $action === 'send-otp'
-        ) {
-            send_otp();
-        }
-
-        if (
-            $method === 'POST' &&
-            $action === 'verify-otp'
-        ) {
-            verify_otp();
-        }
-        if (
-            $method === 'POST' &&
             $action === 'reset-password'
         ) {
             reset_password();

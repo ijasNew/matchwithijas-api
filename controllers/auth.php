@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/../helpers/msg91.php';
 
 function normalize_phone(mixed $phone): string
 {
@@ -24,94 +25,72 @@ function generate_member_id(PDO $pdo, int $id): string
     return 'MWI' . str_pad((string)$id, 4, '0', STR_PAD_LEFT);
 }
 
-function send_otp(): never
-{
-    $data = request_json();
-    $phone = normalize_phone($data['phone'] ?? '');
-    $purpose = $data['purpose'] ?? 'registration';
-
-    if (!preg_match('/^[0-9]{10}$/', $phone)) error_response('Please enter a valid 10 digit mobile number.', ['phone' => 'Invalid phone number.']);
-    $allowed = ['registration', 'login', 'forgot_password', 'change_phone'];
-    if (!in_array($purpose, $allowed, true)) error_response('Invalid OTP purpose.', ['purpose' => 'Unsupported purpose.']);
-
-    $stmt = db()->prepare('SELECT id, account_status FROM users WHERE phone = ? LIMIT 1');
-    $stmt->execute([$phone]);
-    $user = $stmt->fetch();
-
-    if ($purpose === 'registration' && $user) error_response('This mobile number is already registered. Please login to continue.', [], 409);
-    if ($purpose !== 'registration' && !$user) error_response('No account found for this mobile number.', [], 404);
-
-    $otp = (string)random_int(100000, 999999);
-    $hash = password_hash($otp, PASSWORD_DEFAULT);
-    $expires = date('Y-m-d H:i:s', time() + OTP_TTL_MINUTES * 60);
-
-    db()->prepare('UPDATE otp_verifications SET verified_at = NOW() WHERE phone = ? AND purpose = ? AND verified_at IS NULL')->execute([$phone, $purpose]);
-    db()->prepare('INSERT INTO otp_verifications (phone, purpose, otp_hash, expires_at) VALUES (?, ?, ?, ?)')->execute([$phone, $purpose, $hash, $expires]);
-
-    $payload = ['expires_in' => OTP_TTL_MINUTES * 60];
-    if (APP_ENV === 'local') $payload['dev_otp'] = $otp;
-    success_response('OTP sent successfully.', $payload);
-}
-
-function verify_otp(): never
-{
-    $data = request_json();
-    $phone = normalize_phone($data['phone'] ?? '');
-    $otp = trim((string)($data['otp'] ?? ''));
-    $purpose = $data['purpose'] ?? 'registration';
-
-    if (!preg_match('/^[0-9]{10}$/', $phone)) error_response('Invalid phone number.', ['phone' => 'Invalid phone number.']);
-    if (!preg_match('/^[0-9]{6}$/', $otp)) error_response('Please enter the 6 digit OTP.', ['otp' => 'OTP must contain 6 digits.']);
-
-    $stmt = db()->prepare('SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified_at IS NULL ORDER BY id DESC LIMIT 1');
-    $stmt->execute([$phone, $purpose]);
-    $record = $stmt->fetch();
-
-    if (!$record) error_response('OTP not found or already used.', [], 400);
-    if (strtotime($record['expires_at']) < time()) error_response('OTP has expired. Please request a new OTP.', [], 400);
-    if ((int)$record['attempts'] >= OTP_MAX_ATTEMPTS) error_response('Too many OTP attempts. Please request a new OTP.', [], 429);
-
-    if (!password_verify($otp, $record['otp_hash'])) {
-        db()->prepare('UPDATE otp_verifications SET attempts = attempts + 1 WHERE id = ?')->execute([$record['id']]);
-        error_response('Invalid OTP.', ['otp' => 'The OTP is incorrect.'], 400);
-    }
-
-    db()->prepare('UPDATE otp_verifications SET verified_at = NOW() WHERE id = ?')->execute([$record['id']]);
-    success_response('OTP verified successfully.', ['phone' => $phone, 'purpose' => $purpose]);
-}
-
 function register_user(): never
 {
     $data = request_json();
     $phone = normalize_phone($data['phone'] ?? '');
     $password = (string)($data['password'] ?? '');
-    $otp = trim((string)($data['otp'] ?? ''));
+    $accessToken = trim((string)($data['msg91_access_token'] ?? ''));
 
     $errors = [];
-    if (!preg_match('/^[0-9]{10}$/', $phone)) $errors['phone'] = 'Invalid phone number.';
-    if ($otp === '') $errors['otp'] = 'OTP is required.';
-    if (($passwordError = validate_password($password)) !== null) $errors['password'] = $passwordError;
-    if ($errors) error_response('Validation failed.', $errors, 422);
+    if (!preg_match('/^[0-9]{10}$/', $phone)) {
+        $errors['phone'] = 'Invalid phone number.';
+    }
+
+    if ($accessToken === '') {
+        $errors['msg91_access_token'] = 'Mobile OTP verification is required.';
+    }
+
+    if (($passwordError = validate_password($password)) !== null) {
+        $errors['password'] = $passwordError;
+    }
+
+    if ($errors) {
+        error_response('Validation failed.', $errors, 422);
+    }
 
     $pdo = db();
+
     $stmt = $pdo->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
     $stmt->execute([$phone]);
-    if ($stmt->fetch()) error_response('This mobile number is already registered. Please login to continue.', [], 409);
+    if ($stmt->fetch()) {
+        error_response(
+            'This mobile number is already registered. Please login to continue.',
+            [],
+            409
+        );
+    }
 
-    $otpStmt = $pdo->prepare('SELECT * FROM otp_verifications WHERE phone = ? AND purpose = ? AND verified_at IS NOT NULL ORDER BY verified_at DESC LIMIT 1');
-    $otpStmt->execute([$phone, 'registration']);
-    $otpRecord = $otpStmt->fetch();
-    if (!$otpRecord) error_response('Please verify the OTP before creating your account.', [], 400);
+    try {
+        $msg91Response = verify_msg91_access_token($accessToken);
+        assert_msg91_token_matches_phone($msg91Response, $accessToken, $phone);
+    } catch (Throwable $e) {
+        error_response(
+            $e->getMessage() ?: 'Mobile OTP verification failed.',
+            [],
+            401
+        );
+    }
 
-    // OTP verification is tied to the phone + purpose. The latest verified record is accepted.
     $pdo->beginTransaction();
     try {
         $tempMember = 'TEMP-' . bin2hex(random_bytes(6));
-        $stmt = $pdo->prepare("INSERT INTO users (member_id, phone, password_hash, role, account_status, otp_verified) VALUES (?, ?, ?, 'user', 'pending', 1)");
-        $stmt->execute([$tempMember, $phone, password_hash($password, PASSWORD_DEFAULT)]);
+        $stmt = $pdo->prepare(
+            "INSERT INTO users (member_id, phone, password_hash, role, account_status, otp_verified)\n             VALUES (?, ?, ?, 'user', 'pending', 1)"
+        );
+        $stmt->execute([
+            $tempMember,
+            $phone,
+            password_hash($password, PASSWORD_DEFAULT)
+        ]);
+
         $userId = (int)$pdo->lastInsertId();
         $memberId = generate_member_id($pdo, $userId);
-        $pdo->prepare('UPDATE users SET member_id = ? WHERE id = ?')->execute([$memberId, $userId]);
+
+        $pdo->prepare(
+            'UPDATE users SET member_id = ? WHERE id = ?'
+        )->execute([$memberId, $userId]);
+
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -119,16 +98,21 @@ function register_user(): never
     }
 
     $token = issue_token($userId);
-    success_response('Account created successfully.', [
-        'token' => $token,
-        'user' => [
-            'id' => $userId,
-            'member_id' => $memberId,
-            'phone' => $phone,
-            'role' => 'user',
-            'account_status' => 'pending'
-        ]
-    ], 201);
+
+    success_response(
+        'Account created successfully.',
+        [
+            'token' => $token,
+            'user' => [
+                'id' => $userId,
+                'member_id' => $memberId,
+                'phone' => $phone,
+                'role' => 'user',
+                'account_status' => 'pending'
+            ]
+        ],
+        201
+    );
 }
 
 function login_user(): never
